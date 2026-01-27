@@ -1,97 +1,288 @@
+import { getTabEngine } from '@/lib/tab-engine';
+import { getStateManager } from '@/lib/storage';
+import { broadcastMessage, type UIMessage } from '@/lib/messages';
 import type { ExtendedTab } from '@/types';
-import type { UIMessage, BackgroundMessage } from '@/lib/messages';
 
-console.log('Service worker loaded');
+console.log('[ServiceWorker] Loading...');
 
-// Open side panel when extension icon is clicked
-chrome.action.onClicked.addListener(async (tab) => {
-  if (tab.windowId) {
-    await chrome.sidePanel.open({ windowId: tab.windowId });
+// ============================================
+// Initialize Core Systems
+// ============================================
+const tabEngine = getTabEngine();
+const stateManager = getStateManager();
+
+async function initialize(): Promise<void> {
+  console.log('[ServiceWorker] Initializing...');
+  
+  // Initialize state manager first (loads persisted state)
+  await stateManager.initialize();
+  
+  // Initialize tab engine (syncs with Chrome)
+  await tabEngine.initialize();
+  
+  // Apply persisted metadata to tabs
+  const metadata = stateManager.getTabMetadata();
+  for (const [tabIdStr, data] of Object.entries(metadata)) {
+    const tabId = parseInt(tabIdStr, 10);
+    if (data.spaceId || data.lastActiveAt) {
+      tabEngine.updateTabMetadata(tabId, data);
+    }
   }
-});
-
-// Helper to broadcast messages to UI contexts
-function broadcastToUI(message: BackgroundMessage): void {
-  chrome.runtime.sendMessage(message).catch(() => {
-    // Side panel might not be open, that's expected
+  
+  // Clean up metadata when tabs are removed (regardless of how they were closed)
+  chrome.tabs.onRemoved.addListener((tabId) => {
+    stateManager.removeTabMetadata(tabId);
   });
+  
+  // Subscribe to state manager changes to broadcast to UI
+  stateManager.subscribe(() => {
+    broadcastMessage({
+      type: 'SPACES_UPDATED',
+      spaces: stateManager.getSpaces(),
+    });
+  });
+  
+  console.log('[ServiceWorker] Initialized');
 }
 
-// Tab event listeners
-chrome.tabs.onCreated.addListener((tab) => {
-  console.log('Tab created:', tab.id);
-  broadcastToUI({ 
-    type: 'TAB_CREATED', 
-    tab: { ...tab, lastActiveAt: Date.now() } as ExtendedTab 
-  });
-});
+// Track initialization state
+let isInitialized = false;
 
-chrome.tabs.onRemoved.addListener((tabId) => {
-  console.log('Tab removed:', tabId);
-  broadcastToUI({ type: 'TAB_REMOVED', tabId });
-});
+// Initialize on load
+initialize().then(() => { isInitialized = true; }).catch(console.error);
 
-chrome.tabs.onUpdated.addListener((tabId, changeInfo, tab) => {
-  // Only broadcast on meaningful changes
-  if (changeInfo.status === 'complete' || changeInfo.title || changeInfo.favIconUrl) {
-    console.log('Tab updated:', tabId, changeInfo);
-    broadcastToUI({ 
-      type: 'TAB_UPDATED', 
-      tab: { ...tab, lastActiveAt: Date.now() } as ExtendedTab 
-    });
+// ============================================
+// Side Panel Toggle
+// ============================================
+const sidePanelToggleState = new Map<number, boolean>();
+
+async function toggleSidePanel(windowId: number): Promise<void> {
+  const currentState = sidePanelToggleState.get(windowId) || false;
+  const newState = !currentState;
+  sidePanelToggleState.set(windowId, newState);
+  
+  if (newState) {
+    await chrome.sidePanel.open({ windowId });
+  } else {
+    try {
+      // Chrome doesn't support programmatic closing of side panels
+      // Best we can do is toggle enabled state which may close it
+      await chrome.sidePanel.setOptions({ enabled: false });
+      setTimeout(async () => {
+        await chrome.sidePanel.setOptions({ enabled: true });
+      }, 100);
+    } catch (error) {
+      console.log('[ServiceWorker] Could not disable side panel:', error);
+      await chrome.sidePanel.open({ windowId });
+      sidePanelToggleState.set(windowId, true);
+    }
+  }
+}
+
+// Toggle side panel when extension icon is clicked
+chrome.action.onClicked.addListener(async (tab) => {
+  if (tab.windowId) {
+    await toggleSidePanel(tab.windowId);
   }
 });
 
-chrome.tabs.onActivated.addListener(({ tabId, windowId }) => {
-  console.log('Tab activated:', tabId);
-  broadcastToUI({ type: 'TAB_ACTIVATED', tabId, windowId });
+// Handle keyboard shortcut
+chrome.commands.onCommand.addListener(async (command) => {
+  if (command === '_execute_action') {
+    const [tab] = await chrome.tabs.query({ active: true, currentWindow: true });
+    if (tab?.windowId) {
+      await toggleSidePanel(tab.windowId);
+    }
+  }
 });
 
-// Handle messages from UI
+// ============================================
+// Message Handler
+// ============================================
 chrome.runtime.onMessage.addListener(
   (message: UIMessage, _sender, sendResponse) => {
-    console.log('Message received:', message.type);
-
-    switch (message.type) {
-      case 'GET_ALL_TABS':
-        chrome.tabs.query({}).then((tabs) => {
-          const extendedTabs: ExtendedTab[] = tabs.map((tab) => ({
-            ...tab,
-            lastActiveAt: Date.now(),
-          }));
-          sendResponse(extendedTabs);
-        });
-        return true; // Keep channel open for async response
-
-      case 'SWITCH_TAB':
-        chrome.tabs.update(message.tabId, { active: true });
-        chrome.windows.update(message.windowId, { focused: true });
-        break;
-
-      case 'CLOSE_TAB':
-        chrome.tabs.remove(message.tabId);
-        break;
-
-      case 'PIN_TAB':
-        chrome.tabs.update(message.tabId, { pinned: message.pinned });
-        break;
-
-      case 'CREATE_TAB':
-        chrome.tabs.create({ url: message.url });
-        break;
-    }
-
-    return false;
+    console.log('[ServiceWorker] Message received:', message.type);
+    
+    handleMessage(message, sendResponse);
+    
+    // Return true to keep channel open for async responses
+    return true;
   }
 );
 
-// Log when extension is installed or updated
+async function handleMessage(
+  message: UIMessage, 
+  sendResponse: (response: unknown) => void
+): Promise<void> {
+  try {
+    switch (message.type) {
+      // ========== State Queries ==========
+      case 'GET_STATE': {
+        const state = tabEngine.getSerializedState();
+        const spaces = stateManager.getSpaces();
+        sendResponse({ state, spaces });
+        break;
+      }
+      
+      case 'GET_TABS': {
+        const windowId = message.windowId;
+        let tabs: ExtendedTab[];
+        
+        if (windowId !== undefined) {
+          tabs = tabEngine.getTabsForWindow(windowId);
+        } else {
+          // Get tabs for current window
+          const activeWindowId = tabEngine.getActiveWindowId();
+          if (activeWindowId !== null) {
+            tabs = tabEngine.getTabsForWindow(activeWindowId);
+          } else {
+            tabs = tabEngine.getAllTabs();
+          }
+        }
+        
+        // Enrich with metadata
+        const metadata = stateManager.getTabMetadata();
+        tabs = tabs.map(tab => ({
+          ...tab,
+          spaceId: tab.id ? metadata[tab.id]?.spaceId : undefined,
+          lastActiveAt: tab.id ? metadata[tab.id]?.lastActiveAt : undefined,
+        }));
+        
+        sendResponse(tabs);
+        break;
+      }
+      
+      case 'SUBSCRIBE': {
+        // Send current state immediately
+        const state = tabEngine.getSerializedState();
+        const spaces = stateManager.getSpaces();
+        broadcastMessage({ type: 'STATE_SYNC', state, spaces });
+        sendResponse({ success: true });
+        break;
+      }
+      
+      case 'UNSUBSCRIBE': {
+        sendResponse({ success: true });
+        break;
+      }
+      
+      // ========== Tab Actions ==========
+      case 'SWITCH_TAB': {
+        await chrome.tabs.update(message.tabId, { active: true });
+        await chrome.windows.update(message.windowId, { focused: true });
+        sendResponse({ success: true });
+        break;
+      }
+      
+      case 'CLOSE_TAB': {
+        await chrome.tabs.remove(message.tabId);
+        stateManager.removeTabMetadata(message.tabId);
+        sendResponse({ success: true });
+        break;
+      }
+      
+      case 'CLOSE_TABS': {
+        await chrome.tabs.remove(message.tabIds);
+        for (const tabId of message.tabIds) {
+          stateManager.removeTabMetadata(tabId);
+        }
+        sendResponse({ success: true });
+        break;
+      }
+      
+      case 'PIN_TAB': {
+        await chrome.tabs.update(message.tabId, { pinned: message.pinned });
+        sendResponse({ success: true });
+        break;
+      }
+      
+      case 'CREATE_TAB': {
+        const options: chrome.tabs.CreateProperties = {};
+        if (message.url) options.url = message.url;
+        if (message.windowId) options.windowId = message.windowId;
+        
+        const tab = await chrome.tabs.create(options);
+        sendResponse({ success: true, tabId: tab.id });
+        break;
+      }
+      
+      case 'MOVE_TAB': {
+        const moveOptions: chrome.tabs.MoveProperties = { index: message.index };
+        if (message.windowId) moveOptions.windowId = message.windowId;
+        
+        await chrome.tabs.move(message.tabId, moveOptions);
+        sendResponse({ success: true });
+        break;
+      }
+      
+      case 'RELOAD_TAB': {
+        await chrome.tabs.reload(message.tabId);
+        sendResponse({ success: true });
+        break;
+      }
+      
+      case 'DUPLICATE_TAB': {
+        const newTab = await chrome.tabs.duplicate(message.tabId);
+        sendResponse({ success: true, tabId: newTab?.id });
+        break;
+      }
+      
+      // ========== Space Actions ==========
+      case 'ASSIGN_TAB_TO_SPACE': {
+        stateManager.assignTabToSpace(message.tabId, message.spaceId);
+        tabEngine.updateTabMetadata(message.tabId, { spaceId: message.spaceId });
+        sendResponse({ success: true });
+        break;
+      }
+      
+      case 'CREATE_SPACE': {
+        const space = stateManager.addSpace(message.name, message.color);
+        sendResponse({ success: true, space });
+        break;
+      }
+      
+      case 'DELETE_SPACE': {
+        stateManager.removeSpace(message.spaceId);
+        sendResponse({ success: true });
+        break;
+      }
+      
+      case 'RENAME_SPACE': {
+        stateManager.renameSpace(message.spaceId, message.name);
+        sendResponse({ success: true });
+        break;
+      }
+      
+      default: {
+        console.warn('[ServiceWorker] Unknown message type:', (message as { type: string }).type);
+        sendResponse({ error: 'Unknown message type' });
+      }
+    }
+  } catch (error) {
+    console.error('[ServiceWorker] Error handling message:', error);
+    sendResponse({ error: String(error) });
+  }
+}
+
+// ============================================
+// Extension Lifecycle
+// ============================================
 chrome.runtime.onInstalled.addListener((details) => {
-  console.log('Extension installed/updated:', details.reason);
+  console.log('[ServiceWorker] Extension installed/updated:', details.reason);
   
   if (details.reason === 'install') {
-    // First install - could trigger onboarding here
-    console.log('First install - welcome!');
+    console.log('[ServiceWorker] First install - welcome!');
   }
 });
 
+// Handle service worker activation (restart after idle)
+chrome.runtime.onStartup.addListener(async () => {
+  console.log('[ServiceWorker] Browser started');
+  if (!isInitialized) {
+    console.log('[ServiceWorker] Re-initializing...');
+    await initialize();
+    isInitialized = true;
+  }
+});
+
+console.log('[ServiceWorker] Loaded');

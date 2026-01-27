@@ -4,6 +4,13 @@ export interface ExtendedTab extends chrome.tabs.Tab {
   spaceId?: string;
 }
 
+// Window with metadata
+export interface ExtendedWindow {
+  id: number;
+  focused: boolean;
+  tabIds: number[];
+}
+
 // Space/Workspace
 export interface Space {
   id: string;
@@ -14,12 +21,31 @@ export interface Space {
   createdAt: number;
 }
 
-// App state
+// Core state managed by TabEngine
+export interface TabState {
+  tabs: Map<number, ExtendedTab>;
+  windows: Map<number, ExtendedWindow>;
+  activeTabId: number | null;
+  activeWindowId: number | null;
+  lastUpdated: number;
+}
+
+// Serializable version for storage/messaging
+export interface SerializedTabState {
+  tabs: ExtendedTab[];
+  windows: ExtendedWindow[];
+  activeTabId: number | null;
+  activeWindowId: number | null;
+  lastUpdated: number;
+}
+
+// App state for UI
 export interface AppState {
   tabs: ExtendedTab[];
   spaces: Space[];
   activeSpaceId: string;
   activeTabId: number | null;
+  activeWindowId: number | null;
   isLoading: boolean;
 }
 
@@ -32,3 +58,9 @@ export interface UserSettings {
   staleTabThresholdDays: number;
 }
 
+// Persisted state shape
+export interface PersistedState {
+  spaces: Space[];
+  settings: UserSettings;
+  tabMetadata: Record<number, { spaceId?: string; lastActiveAt?: number }>;
+}

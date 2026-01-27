@@ -8,7 +8,7 @@ export default {
       colors: {
         // Custom colors for the extension
         sidebar: {
-          bg: '#1a1a1a',
+          bg: '#ffffff',
           hover: '#2a2a2a',
           active: '#3a3a3a',
           border: '#333333',

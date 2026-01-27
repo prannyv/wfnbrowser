@@ -1,121 +1,267 @@
-import { useEffect, useState } from 'react';
+import { useEffect, useState, useCallback, useMemo } from 'react';
 import type { ExtendedTab } from '@/types';
 import { sendMessage, onMessage } from '@/lib/messages';
-import clsx from 'clsx';
+import Tab from './Tab';
 
 export default function App() {
   const [tabs, setTabs] = useState<ExtendedTab[]>([]);
   const [activeTabId, setActiveTabId] = useState<number | null>(null);
+  const [currentWindowId, setCurrentWindowId] = useState<number | null>(null);
   const [searchQuery, setSearchQuery] = useState('');
   const [isLoading, setIsLoading] = useState(true);
 
-  // Load initial tabs
+  // Load initial state and subscribe to updates - SINGLE request instead of 3
   useEffect(() => {
-    async function loadTabs() {
+    let mounted = true;
+    
+    async function initialize() {
       try {
-        const allTabs = await sendMessage<ExtendedTab[]>({ type: 'GET_ALL_TABS' });
-        setTabs(allTabs);
-        
-        // Get currently active tab
+        // Get current window ID first
         const [activeTab] = await chrome.tabs.query({ 
           active: true, 
           currentWindow: true 
         });
+        
+        if (!mounted) return;
+        
+        const windowId = activeTab?.windowId ?? null;
+        setCurrentWindowId(windowId);
+        
         if (activeTab?.id) {
           setActiveTabId(activeTab.id);
         }
+        
+        // Single request - GET_TABS returns enriched tabs for current window
+        const tabList = await sendMessage<ExtendedTab[]>({ 
+          type: 'GET_TABS', 
+          windowId: windowId ?? undefined 
+        });
+        
+        if (!mounted) return;
+        setTabs(tabList);
+        
       } catch (error) {
-        console.error('Failed to load tabs:', error);
+        console.error('[SidePanel] Failed to initialize:', error);
       } finally {
-        setIsLoading(false);
+        if (mounted) setIsLoading(false);
       }
     }
     
-    loadTabs();
+    initialize();
+    
+    return () => { mounted = false; };
   }, []);
 
-  // Listen for tab updates from service worker
+  // Listen for updates from service worker
   useEffect(() => {
     const unsubscribe = onMessage((message) => {
       switch (message.type) {
-        case 'TAB_CREATED':
-          setTabs((prev) => [...prev, message.tab]);
+        case 'STATE_SYNC': {
+          // Full state sync - filter tabs for current window
+          const windowTabs = currentWindowId !== null
+            ? message.state.tabs.filter(t => t.windowId === currentWindowId)
+            : message.state.tabs;
+          setTabs(windowTabs.sort((a, b) => (a.index ?? 0) - (b.index ?? 0)));
+          setActiveTabId(message.state.activeTabId);
           break;
-        case 'TAB_REMOVED':
-          setTabs((prev) => prev.filter((t) => t.id !== message.tabId));
+        }
+        
+        case 'TAB_CREATED': {
+          // Only add tab if it's from current window
+          if (currentWindowId === null || message.windowId === currentWindowId) {
+            setTabs(prev => {
+              // Check if tab already exists
+              if (prev.some(t => t.id === message.tab.id)) {
+                return prev;
+              }
+              // Add and sort by index
+              return [...prev, message.tab].sort((a, b) => (a.index ?? 0) - (b.index ?? 0));
+            });
+          }
           break;
-        case 'TAB_UPDATED':
-          setTabs((prev) =>
-            prev.map((t) => (t.id === message.tab.id ? message.tab : t))
-          );
+        }
+        
+        case 'TAB_REMOVED': {
+          // Remove from our list (windowId check not needed - just remove if present)
+          setTabs(prev => prev.filter(t => t.id !== message.tabId));
           break;
-        case 'TAB_ACTIVATED':
+        }
+        
+        case 'TAB_UPDATED': {
+          // Only update if tab is from current window
+          if (currentWindowId === null || message.tab.windowId === currentWindowId) {
+            setTabs(prev => 
+              prev.map(t => t.id === message.tab.id ? message.tab : t)
+            );
+          }
+          break;
+        }
+        
+        case 'TAB_MOVED': {
+          // Reorder tabs
+          if (currentWindowId === null || message.windowId === currentWindowId) {
+            setTabs(prev => {
+              const updated = [...prev];
+              const tabIndex = updated.findIndex(t => t.id === message.tabId);
+              if (tabIndex !== -1) {
+                const [tab] = updated.splice(tabIndex, 1);
+                tab.index = message.toIndex;
+                updated.splice(message.toIndex, 0, tab);
+                // Update indices for all tabs
+                return updated.map((t, i) => ({ ...t, index: i }));
+              }
+              return prev;
+            });
+          }
+          break;
+        }
+        
+        case 'TAB_ACTIVATED': {
           setActiveTabId(message.tabId);
           break;
+        }
+        
+        case 'WINDOW_FOCUSED': {
+          // If a different window is focused, we might want to refresh
+          // For now, just log it
+          console.log('[SidePanel] Window focused:', message.windowId);
+          break;
+        }
+        
+        case 'SPACES_UPDATED': {
+          // TODO: Handle spaces when feature is implemented
+          break;
+        }
       }
     });
 
     return unsubscribe;
-  }, []);
+  }, [currentWindowId]);
 
-  const handleTabClick = (tab: ExtendedTab) => {
+  // Tab action handlers
+  const handleTabClick = useCallback((tab: ExtendedTab) => {
     if (tab.id && tab.windowId) {
       sendMessage({ type: 'SWITCH_TAB', tabId: tab.id, windowId: tab.windowId });
     }
-  };
+  }, []);
 
-  const handleCloseTab = (e: React.MouseEvent, tabId: number) => {
+  const handleCloseTab = useCallback((e: React.MouseEvent, tabId: number) => {
     e.stopPropagation();
     sendMessage({ type: 'CLOSE_TAB', tabId });
-  };
+  }, []);
 
-  // Filter tabs by search query
-  const filteredTabs = tabs.filter((tab) => {
-    if (!searchQuery) return true;
+  // Memoize filtered and separated tabs - only recompute when deps change
+  const { pinnedTabs, regularTabs, filteredCount } = useMemo(() => {
     const query = searchQuery.toLowerCase();
-    return (
-      tab.title?.toLowerCase().includes(query) ||
-      tab.url?.toLowerCase().includes(query)
-    );
-  });
-
-  // Separate pinned and regular tabs
-  const pinnedTabs = filteredTabs.filter((t) => t.pinned);
-  const regularTabs = filteredTabs.filter((t) => !t.pinned);
+    const filtered = searchQuery 
+      ? tabs.filter(tab => 
+          tab.title?.toLowerCase().includes(query) ||
+          tab.url?.toLowerCase().includes(query)
+        )
+      : tabs;
+    
+    const pinned: ExtendedTab[] = [];
+    const regular: ExtendedTab[] = [];
+    
+    // Single pass instead of two filter calls
+    for (const tab of filtered) {
+      if (tab.pinned) {
+        pinned.push(tab);
+      } else {
+        regular.push(tab);
+      }
+    }
+    
+    return { pinnedTabs: pinned, regularTabs: regular, filteredCount: filtered.length };
+  }, [tabs, searchQuery]);
 
   if (isLoading) {
     return (
-      <div className="flex items-center justify-center h-full">
-        <div className="text-gray-400">Loading tabs...</div>
+      <div style={{ 
+        display: 'flex', 
+        alignItems: 'center', 
+        justifyContent: 'center', 
+        height: '100%',
+        color: '#888'
+      }}>
+        Loading tabs...
       </div>
     );
   }
 
   return (
-    <div className="flex flex-col h-full">
+    <div style={{ display: 'flex', flexDirection: 'column', height: '100%' }}>
       {/* Search */}
-      <div className="p-3 border-b border-sidebar-border">
+      <div style={{ padding: '12px', borderBottom: '1px solid #333' }}>
         <input
           type="text"
           placeholder="Search tabs..."
           value={searchQuery}
           onChange={(e) => setSearchQuery(e.target.value)}
-          className="w-full px-3 py-2 bg-sidebar-hover rounded-lg text-sm 
-                     text-gray-200 placeholder-gray-500 outline-none
-                     focus:ring-2 focus:ring-accent"
+          style={{
+            width: '100%',
+            padding: '8px 12px',
+            backgroundColor: '#2a2a2a',
+            borderRadius: '8px',
+            fontSize: '14px',
+            color: '#e5e5e5',
+            border: 'none',
+            outline: 'none',
+          }}
         />
       </div>
 
-      {/* Tab list */}
-      <div className="flex-1 overflow-y-auto p-2">
-        {/* Pinned tabs */}
-        {pinnedTabs.length > 0 && (
-          <div className="mb-4">
-            <div className="text-xs text-gray-500 uppercase tracking-wide px-2 mb-2">
-              Pinned
+      {/* Tab list - scrollable */}
+      <div 
+        style={{ 
+          flex: 1, 
+          overflowY: 'auto',
+          overflowX: 'hidden',
+          minHeight: 0,
+        }}
+      >
+        <div style={{ padding: '8px' }}>
+          {/* Pinned tabs */}
+          {pinnedTabs.length > 0 && (
+            <div style={{ marginBottom: '16px' }}>
+              <div style={{ 
+                fontSize: '11px', 
+                color: '#888', 
+                textTransform: 'uppercase', 
+                letterSpacing: '0.05em',
+                padding: '0 8px',
+                marginBottom: '8px'
+              }}>
+                Pinned
+              </div>
+              {pinnedTabs.map((tab) => (
+                <Tab
+                  key={tab.id}
+                  tab={tab}
+                  isActive={tab.id === activeTabId}
+                  onClick={() => handleTabClick(tab)}
+                  onClose={(e) => tab.id && handleCloseTab(e, tab.id)}
+                />
+              ))}
             </div>
-            {pinnedTabs.map((tab) => (
-              <TabItem
+          )}
+
+          {/* Regular tabs */}
+          <div>
+            {pinnedTabs.length > 0 && regularTabs.length > 0 && (
+              <div style={{ 
+                fontSize: '11px', 
+                color: '#888', 
+                textTransform: 'uppercase', 
+                letterSpacing: '0.05em',
+                padding: '0 8px',
+                marginBottom: '8px'
+              }}>
+                Tabs ({regularTabs.length})
+              </div>
+            )}
+            {regularTabs.map((tab) => (
+              <Tab
                 key={tab.id}
                 tab={tab}
                 isActive={tab.id === activeTabId}
@@ -124,98 +270,21 @@ export default function App() {
               />
             ))}
           </div>
-        )}
 
-        {/* Regular tabs */}
-        <div>
-          {pinnedTabs.length > 0 && regularTabs.length > 0 && (
-            <div className="text-xs text-gray-500 uppercase tracking-wide px-2 mb-2">
-              Tabs ({regularTabs.length})
+          {filteredCount === 0 && (
+            <div style={{ textAlign: 'center', color: '#888', padding: '32px 0' }}>
+              {searchQuery ? 'No matching tabs' : 'No tabs open'}
             </div>
           )}
-          {regularTabs.map((tab) => (
-            <TabItem
-              key={tab.id}
-              tab={tab}
-              isActive={tab.id === activeTabId}
-              onClick={() => handleTabClick(tab)}
-              onClose={(e) => tab.id && handleCloseTab(e, tab.id)}
-            />
-          ))}
         </div>
-
-        {filteredTabs.length === 0 && (
-          <div className="text-center text-gray-500 py-8">
-            {searchQuery ? 'No matching tabs' : 'No tabs open'}
-          </div>
-        )}
       </div>
 
       {/* Footer */}
-      <div className="p-2 border-t border-sidebar-border">
-        <div className="text-xs text-gray-500 text-center">
+      <div style={{ padding: '8px', borderTop: '1px solid #333' }}>
+        <div style={{ fontSize: '11px', color: '#888', textAlign: 'center' }}>
           {tabs.length} tab{tabs.length !== 1 ? 's' : ''} open
         </div>
       </div>
     </div>
   );
 }
-
-// Tab item component
-interface TabItemProps {
-  tab: ExtendedTab;
-  isActive: boolean;
-  onClick: () => void;
-  onClose: (e: React.MouseEvent) => void;
-}
-
-function TabItem({ tab, isActive, onClick, onClose }: TabItemProps) {
-  const [isHovered, setIsHovered] = useState(false);
-
-  return (
-    <div
-      className={clsx(
-        'flex items-center gap-3 px-3 py-2 rounded-lg cursor-pointer',
-        'transition-colors duration-150 group',
-        isActive 
-          ? 'bg-sidebar-active border-l-2 border-accent' 
-          : 'hover:bg-sidebar-hover'
-      )}
-      onClick={onClick}
-      onMouseEnter={() => setIsHovered(true)}
-      onMouseLeave={() => setIsHovered(false)}
-      title={tab.title}
-    >
-      {/* Favicon */}
-      <img
-        src={tab.favIconUrl || 'data:image/svg+xml,<svg xmlns="http://www.w3.org/2000/svg"/>' }
-        alt=""
-        className="w-4 h-4 rounded flex-shrink-0"
-        onError={(e) => {
-          (e.target as HTMLImageElement).src = 
-            'data:image/svg+xml,<svg xmlns="http://www.w3.org/2000/svg"/>';
-        }}
-      />
-
-      {/* Title */}
-      <span className="flex-1 truncate text-sm">
-        {tab.title || 'New Tab'}
-      </span>
-
-      {/* Close button */}
-      <button
-        onClick={onClose}
-        className={clsx(
-          'p-1 rounded hover:bg-red-500/20 hover:text-red-400',
-          'transition-opacity duration-150',
-          isHovered ? 'opacity-100' : 'opacity-0'
-        )}
-      >
-        <svg className="w-3 h-3" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-          <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M6 18L18 6M6 6l12 12" />
-        </svg>
-      </button>
-    </div>
-  );
-}
-
