@@ -2,6 +2,7 @@ import { useEffect, useState, useCallback, useMemo } from 'react';
 import type { ExtendedTab } from '@/types';
 import { sendMessage, onMessage } from '@/lib/messages';
 import Tab from './Tab';
+import ContextMenu from './ContextMenu';
 
 export default function App() {
   const [tabs, setTabs] = useState<ExtendedTab[]>([]);
@@ -9,6 +10,12 @@ export default function App() {
   const [currentWindowId, setCurrentWindowId] = useState<number | null>(null);
   const [searchQuery, setSearchQuery] = useState('');
   const [isLoading, setIsLoading] = useState(true);
+  const [isClosing, setIsClosing] = useState(false);
+  const [contextMenu, setContextMenu] = useState<{
+    x: number;
+    y: number;
+    tab: ExtendedTab;
+  } | null>(null);
 
   // Load initial state and subscribe to updates - SINGLE request instead of 3
   useEffect(() => {
@@ -132,6 +139,13 @@ export default function App() {
           // TODO: Handle spaces when feature is implemented
           break;
         }
+
+        case 'SIDE_PANEL_CLOSING': {
+          // Play a closing animation when the background script
+          // is about to toggle the side panel off
+          setIsClosing(true);
+          break;
+        }
       }
     });
 
@@ -149,6 +163,45 @@ export default function App() {
     e.stopPropagation();
     sendMessage({ type: 'CLOSE_TAB', tabId });
   }, []);
+
+  const handleContextMenu = useCallback((e: React.MouseEvent, tab: ExtendedTab) => {
+    e.preventDefault();
+    e.stopPropagation();
+    setContextMenu({
+      x: e.clientX,
+      y: e.clientY,
+      tab,
+    });
+  }, []);
+
+  const handleCopyLink = useCallback(async () => {
+    if (!contextMenu?.tab.url) return;
+    try {
+      await navigator.clipboard.writeText(contextMenu.tab.url);
+      setContextMenu(null);
+    } catch (error) {
+      console.error('Failed to copy link:', error);
+    }
+  }, [contextMenu]);
+
+  const handleReload = useCallback(() => {
+    if (!contextMenu?.tab.id) return;
+    sendMessage({ type: 'RELOAD_TAB', tabId: contextMenu.tab.id });
+    setContextMenu(null);
+  }, [contextMenu]);
+
+  const handleMute = useCallback(() => {
+    if (!contextMenu?.tab.id) return;
+    const isMuted = contextMenu.tab.mutedInfo?.muted ?? false;
+    sendMessage({ type: 'MUTE_TAB', tabId: contextMenu.tab.id, muted: !isMuted });
+    setContextMenu(null);
+  }, [contextMenu]);
+
+  const handleContextMenuClose = useCallback(() => {
+    if (!contextMenu?.tab.id) return;
+    sendMessage({ type: 'CLOSE_TAB', tabId: contextMenu.tab.id });
+    setContextMenu(null);
+  }, [contextMenu]);
 
   // Memoize filtered and separated tabs - only recompute when deps change
   const { pinnedTabs, regularTabs, filteredCount } = useMemo(() => {
@@ -190,7 +243,10 @@ export default function App() {
   }
 
   return (
-    <div style={{ display: 'flex', flexDirection: 'column', height: '100%' }}>
+    <div
+      className={`sidepanel-root${isClosing ? ' sidepanel-root--closing' : ''}`}
+      style={{ display: 'flex', flexDirection: 'column', height: '100%' }}
+    >
       {/* Search */}
       <div style={{ padding: '12px', borderBottom: '1px solid #333' }}>
         <input
@@ -218,6 +274,10 @@ export default function App() {
           overflowY: 'auto',
           overflowX: 'hidden',
           minHeight: 0,
+          userSelect: 'none',
+          WebkitUserSelect: 'none',
+          MozUserSelect: 'none',
+          msUserSelect: 'none',
         }}
       >
         <div style={{ padding: '8px' }}>
@@ -241,6 +301,7 @@ export default function App() {
                   isActive={tab.id === activeTabId}
                   onClick={() => handleTabClick(tab)}
                   onClose={(e) => tab.id && handleCloseTab(e, tab.id)}
+                  onContextMenu={(e) => handleContextMenu(e, tab)}
                 />
               ))}
             </div>
@@ -267,6 +328,7 @@ export default function App() {
                 isActive={tab.id === activeTabId}
                 onClick={() => handleTabClick(tab)}
                 onClose={(e) => tab.id && handleCloseTab(e, tab.id)}
+                onContextMenu={(e) => handleContextMenu(e, tab)}
               />
             ))}
           </div>
@@ -285,6 +347,20 @@ export default function App() {
           {tabs.length} tab{tabs.length !== 1 ? 's' : ''} open
         </div>
       </div>
+
+      {/* Context Menu */}
+      {contextMenu && (
+        <ContextMenu
+          x={contextMenu.x}
+          y={contextMenu.y}
+          onClose={() => setContextMenu(null)}
+          onCopyLink={handleCopyLink}
+          onReload={handleReload}
+          onCloseTab={handleContextMenuClose}
+          onMute={handleMute}
+          isMuted={contextMenu.tab.mutedInfo?.muted ?? false}
+        />
+      )}
     </div>
   );
 }

@@ -65,6 +65,16 @@ async function toggleSidePanel(windowId: number): Promise<void> {
     await chrome.sidePanel.open({ windowId });
   } else {
     try {
+      // Notify UI so it can play a closing animation before the panel disappears
+      broadcastMessage({
+        type: 'SIDE_PANEL_CLOSING',
+        windowId,
+      });
+
+      // Wait for the close animation to finish (must stay in sync with CSS)
+      const CLOSE_ANIMATION_DURATION_MS = 140;
+      await new Promise(resolve => setTimeout(resolve, CLOSE_ANIMATION_DURATION_MS));
+
       // Chrome doesn't support programmatic closing of side panels
       // Best we can do is toggle enabled state which may close it
       await chrome.sidePanel.setOptions({ enabled: false });
@@ -224,6 +234,12 @@ async function handleMessage(
       case 'DUPLICATE_TAB': {
         const newTab = await chrome.tabs.duplicate(message.tabId);
         sendResponse({ success: true, tabId: newTab?.id });
+        break;
+      }
+      
+      case 'MUTE_TAB': {
+        await chrome.tabs.update(message.tabId, { muted: message.muted });
+        sendResponse({ success: true });
         break;
       }
       

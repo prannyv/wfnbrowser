@@ -18,6 +18,7 @@ export type UIMessage =
   | { type: 'MOVE_TAB'; tabId: number; index: number; windowId?: number }
   | { type: 'RELOAD_TAB'; tabId: number }
   | { type: 'DUPLICATE_TAB'; tabId: number }
+  | { type: 'MUTE_TAB'; tabId: number; muted: boolean }
   // Space actions
   | { type: 'ASSIGN_TAB_TO_SPACE'; tabId: number; spaceId: string }
   | { type: 'CREATE_SPACE'; name: string; color: string }
@@ -41,7 +42,9 @@ export type BackgroundMessage =
   | { type: 'WINDOW_REMOVED'; windowId: number }
   | { type: 'WINDOW_FOCUSED'; windowId: number }
   // Space updates
-  | { type: 'SPACES_UPDATED'; spaces: Space[] };
+  | { type: 'SPACES_UPDATED'; spaces: Space[] }
+  // Side panel UI events
+  | { type: 'SIDE_PANEL_CLOSING'; windowId: number };
 
 export type Message = UIMessage | BackgroundMessage;
 
@@ -73,7 +76,7 @@ function isBackgroundMessage(message: Message): message is BackgroundMessage {
   const bgTypes = [
     'STATE_SYNC', 'TAB_CREATED', 'TAB_REMOVED', 'TAB_UPDATED', 
     'TAB_MOVED', 'TAB_ACTIVATED', 'WINDOW_CREATED', 'WINDOW_REMOVED',
-    'WINDOW_FOCUSED', 'SPACES_UPDATED'
+    'WINDOW_FOCUSED', 'SPACES_UPDATED', 'SIDE_PANEL_CLOSING'
   ];
   return bgTypes.includes(message.type);
 }

@@ -14,6 +14,38 @@ body {
   -moz-osx-font-smoothing: grayscale;
 }
 
+/* Sidepanel open / close animations */
+.sidepanel-root {
+  height: 100%;
+  animation: sidepanel-enter 140ms ease-out;
+}
+
+.sidepanel-root--closing {
+  animation: sidepanel-exit 140ms ease-out forwards;
+}
+
+@keyframes sidepanel-enter {
+  from {
+    opacity: 0;
+    transform: translateX(-8px);
+  }
+  to {
+    opacity: 1;
+    transform: translateX(0);
+  }
+}
+
+@keyframes sidepanel-exit {
+  from {
+    opacity: 1;
+    transform: translateX(0);
+  }
+  to {
+    opacity: 0;
+    transform: translateX(-8px);
+  }
+}
+
 /* Scrollbar styling for sidebar */
 .tab-list-container {
   scrollbar-width: thin;

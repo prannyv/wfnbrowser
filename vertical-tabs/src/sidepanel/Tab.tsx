@@ -1,4 +1,4 @@
-import { memo, useState } from 'react';
+import { memo, useState, useLayoutEffect, useRef } from 'react';
 import type { ExtendedTab } from '@/types';
 
 interface TabProps {
@@ -6,29 +6,88 @@ interface TabProps {
   isActive: boolean;
   onClick: () => void;
   onClose: (e: React.MouseEvent) => void;
+  onContextMenu: (e: React.MouseEvent) => void;
 }
 
 // Memoized Tab component - only re-renders when props actually change
-const Tab = memo(function Tab({ tab, isActive, onClick, onClose }: TabProps) {
-  // Only track image error state - hover handled via CSS
+const Tab = memo(function Tab({ tab, isActive, onClick, onClose, onContextMenu }: TabProps) {
+  // Track image error and loading state
   const [imgError, setImgError] = useState(false);
+  const [imgLoaded, setImgLoaded] = useState(false);
+  const imgRef = useRef<HTMLImageElement>(null);
+  const prevUrlRef = useRef<string | undefined>(undefined);
+
+  // Reset states when favIconUrl changes (during render, before effects)
+  if (tab.favIconUrl !== prevUrlRef.current) {
+    prevUrlRef.current = tab.favIconUrl;
+    // Only reset if we had a previous URL (not initial mount)
+    if (imgError || imgLoaded) {
+      setImgError(false);
+      setImgLoaded(false);
+    }
+  }
+
+  // Check for cached images immediately after DOM update
+  useLayoutEffect(() => {
+    const img = imgRef.current;
+    if (img && tab.favIconUrl && !imgError && !imgLoaded) {
+      // Image is already loaded (cached)
+      if (img.complete && img.naturalHeight !== 0) {
+        setImgLoaded(true);
+      }
+    }
+  }, [tab.favIconUrl, imgError, imgLoaded]);
+
+  // Show loading spinner when: we have a URL, no error, and not yet loaded
+  const showSpinner = tab.favIconUrl && !imgError && !imgLoaded;
+
+  // Handle middle-click to close tab
+  const handleMouseDown = (e: React.MouseEvent) => {
+    // Middle mouse button (button 1) closes the tab
+    if (e.button === 1) {
+      e.preventDefault();
+      e.stopPropagation();
+      onClose(e);
+    }
+  };
 
   return (
     <div
       className="tab-item"
       data-active={isActive}
       onClick={onClick}
+      onContextMenu={onContextMenu}
+      onMouseDown={handleMouseDown}
       title={tab.title}
     >
       {/* Favicon */}
       <div className="tab-icon">
         {!imgError && tab.favIconUrl ? (
-          <img
-            src={tab.favIconUrl}
-            alt=""
-            onError={() => setImgError(true)}
-            loading="lazy"
-          />
+          <>
+            {showSpinner && (
+              <div className="tab-icon-loader">
+                <div className="loader"></div>
+              </div>
+            )}
+            <img
+              ref={imgRef}
+              src={tab.favIconUrl}
+              alt=""
+              key={tab.favIconUrl}
+              onError={() => {
+                setImgError(true);
+              }}
+              onLoad={() => {
+                setImgLoaded(true);
+              }}
+              style={{ 
+                display: imgLoaded ? 'block' : 'none',
+                width: '32px',
+                height: '32px',
+                objectFit: 'contain',
+              }}
+            />
+          </>
         ) : (
           <div className="tab-icon-fallback">
             <svg fill="none" stroke="currentColor" viewBox="0 0 24 24">
@@ -66,8 +125,21 @@ const Tab = memo(function Tab({ tab, isActive, onClick, onClose }: TabProps) {
           transition: background-color 0.15s;
           background-color: transparent;
           border-left: 2px solid transparent;
-          user-select: none;
+          -webkit-touch-callout: none;
           -webkit-user-select: none;
+          -khtml-user-select: none;
+          -moz-user-select: none;
+          -ms-user-select: none;
+          user-select: none;
+        }
+        
+        .tab-item * {
+          -webkit-touch-callout: none;
+          -webkit-user-select: none;
+          -khtml-user-select: none;
+          -moz-user-select: none;
+          -ms-user-select: none;
+          user-select: none;
         }
         
         .tab-item:hover {
@@ -86,12 +158,25 @@ const Tab = memo(function Tab({ tab, isActive, onClick, onClose }: TabProps) {
           display: flex;
           align-items: center;
           justify-content: center;
+          position: relative;
+          -webkit-touch-callout: none;
+          -webkit-user-select: none;
+          -khtml-user-select: none;
+          -moz-user-select: none;
+          -ms-user-select: none;
+          user-select: none;
         }
         
         .tab-icon img {
           width: 32px;
           height: 32px;
           object-fit: contain;
+          -webkit-touch-callout: none;
+          -webkit-user-select: none;
+          -khtml-user-select: none;
+          -moz-user-select: none;
+          -ms-user-select: none;
+          user-select: none;
         }
         
         .tab-icon-fallback {
@@ -102,12 +187,63 @@ const Tab = memo(function Tab({ tab, isActive, onClick, onClose }: TabProps) {
           display: flex;
           align-items: center;
           justify-content: center;
+          -webkit-touch-callout: none;
+          -webkit-user-select: none;
+          -khtml-user-select: none;
+          -moz-user-select: none;
+          -ms-user-select: none;
+          user-select: none;
         }
         
         .tab-icon-fallback svg {
           width: 20px;
           height: 20px;
           color: #9ca3af;
+          -webkit-touch-callout: none;
+          -webkit-user-select: none;
+          -khtml-user-select: none;
+          -moz-user-select: none;
+          -ms-user-select: none;
+          user-select: none;
+        }
+        
+        .tab-icon-loader {
+          position: absolute;
+          width: 32px;
+          height: 32px;
+          display: flex;
+          align-items: center;
+          justify-content: center;
+        }
+        
+        .loader {
+          width: 32px;
+          height: 32px;
+          border-radius: 50%;
+          position: relative;
+          animation: rotate 1s linear infinite;
+        }
+        
+        .loader::before {
+          content: "";
+          box-sizing: border-box;
+          position: absolute;
+          inset: 0px;
+          border-radius: 50%;
+          border: 3px solid #9ca3af;
+          animation: prixClipFix 2s linear infinite;
+        }
+        
+        @keyframes rotate {
+          100% { transform: rotate(360deg); }
+        }
+        
+        @keyframes prixClipFix {
+          0%   { clip-path: polygon(50% 50%, 0 0, 0 0, 0 0, 0 0, 0 0); }
+          25%  { clip-path: polygon(50% 50%, 0 0, 100% 0, 100% 0, 100% 0, 100% 0); }
+          50%  { clip-path: polygon(50% 50%, 0 0, 100% 0, 100% 100%, 100% 100%, 100% 100%); }
+          75%  { clip-path: polygon(50% 50%, 0 0, 100% 0, 100% 100%, 0 100%, 0 100%); }
+          100% { clip-path: polygon(50% 50%, 0 0, 100% 0, 100% 100%, 0 100%, 0 0); }
         }
         
         .tab-title {
@@ -119,6 +255,12 @@ const Tab = memo(function Tab({ tab, isActive, onClick, onClose }: TabProps) {
           font-weight: 500;
           color: #e5e5e5;
           line-height: 1.5;
+          -webkit-touch-callout: none;
+          -webkit-user-select: none;
+          -khtml-user-select: none;
+          -moz-user-select: none;
+          -ms-user-select: none;
+          user-select: none;
         }
         
         .tab-close {
@@ -134,6 +276,12 @@ const Tab = memo(function Tab({ tab, isActive, onClick, onClose }: TabProps) {
           align-items: center;
           justify-content: center;
           color: #9ca3af;
+          -webkit-touch-callout: none;
+          -webkit-user-select: none;
+          -khtml-user-select: none;
+          -moz-user-select: none;
+          -ms-user-select: none;
+          user-select: none;
         }
         
         .tab-item:hover .tab-close {
@@ -148,6 +296,12 @@ const Tab = memo(function Tab({ tab, isActive, onClick, onClose }: TabProps) {
         .tab-close svg {
           width: 16px;
           height: 16px;
+          -webkit-touch-callout: none;
+          -webkit-user-select: none;
+          -khtml-user-select: none;
+          -moz-user-select: none;
+          -ms-user-select: none;
+          user-select: none;
         }
       `}</style>
     </div>
