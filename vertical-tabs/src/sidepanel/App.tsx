@@ -1,4 +1,6 @@
 import { useEffect, useState, useCallback, useMemo } from 'react';
+import Fuse from 'fuse.js';
+import type { FuseResultMatch } from 'fuse.js';
 import type { ExtendedTab } from '@/types';
 import { sendMessage, onMessage } from '@/lib/messages';
 import Tab from './Tab';
@@ -20,42 +22,42 @@ export default function App() {
   // Load initial state and subscribe to updates - SINGLE request instead of 3
   useEffect(() => {
     let mounted = true;
-    
+
     async function initialize() {
       try {
         // Get current window ID first
-        const [activeTab] = await chrome.tabs.query({ 
-          active: true, 
-          currentWindow: true 
+        const [activeTab] = await chrome.tabs.query({
+          active: true,
+          currentWindow: true
         });
-        
+
         if (!mounted) return;
-        
+
         const windowId = activeTab?.windowId ?? null;
         setCurrentWindowId(windowId);
-        
+
         if (activeTab?.id) {
           setActiveTabId(activeTab.id);
         }
-        
+
         // Single request - GET_TABS returns enriched tabs for current window
-        const tabList = await sendMessage<ExtendedTab[]>({ 
-          type: 'GET_TABS', 
-          windowId: windowId ?? undefined 
+        const tabList = await sendMessage<ExtendedTab[]>({
+          type: 'GET_TABS',
+          windowId: windowId ?? undefined
         });
-        
+
         if (!mounted) return;
         setTabs(tabList);
-        
+
       } catch (error) {
         console.error('[SidePanel] Failed to initialize:', error);
       } finally {
         if (mounted) setIsLoading(false);
       }
     }
-    
+
     initialize();
-    
+
     return () => { mounted = false; };
   }, []);
 
@@ -72,7 +74,7 @@ export default function App() {
           setActiveTabId(message.state.activeTabId);
           break;
         }
-        
+
         case 'TAB_CREATED': {
           // Only add tab if it's from current window
           if (currentWindowId === null || message.windowId === currentWindowId) {
@@ -87,23 +89,23 @@ export default function App() {
           }
           break;
         }
-        
+
         case 'TAB_REMOVED': {
           // Remove from our list (windowId check not needed - just remove if present)
           setTabs(prev => prev.filter(t => t.id !== message.tabId));
           break;
         }
-        
+
         case 'TAB_UPDATED': {
           // Only update if tab is from current window
           if (currentWindowId === null || message.tab.windowId === currentWindowId) {
-            setTabs(prev => 
+            setTabs(prev =>
               prev.map(t => t.id === message.tab.id ? message.tab : t)
             );
           }
           break;
         }
-        
+
         case 'TAB_MOVED': {
           // Reorder tabs
           if (currentWindowId === null || message.windowId === currentWindowId) {
@@ -122,19 +124,19 @@ export default function App() {
           }
           break;
         }
-        
+
         case 'TAB_ACTIVATED': {
           setActiveTabId(message.tabId);
           break;
         }
-        
+
         case 'WINDOW_FOCUSED': {
           // If a different window is focused, we might want to refresh
           // For now, just log it
           console.log('[SidePanel] Window focused:', message.windowId);
           break;
         }
-        
+
         case 'SPACES_UPDATED': {
           // TODO: Handle spaces when feature is implemented
           break;
@@ -205,35 +207,44 @@ export default function App() {
 
   // Memoize filtered and separated tabs - only recompute when deps change
   const { pinnedTabs, regularTabs, filteredCount } = useMemo(() => {
-    const query = searchQuery.toLowerCase();
-    const filtered = searchQuery 
-      ? tabs.filter(tab => 
-          tab.title?.toLowerCase().includes(query) ||
-          tab.url?.toLowerCase().includes(query)
-        )
-      : tabs;
-    
-    const pinned: ExtendedTab[] = [];
-    const regular: ExtendedTab[] = [];
-    
+    let filtered: { tab: ExtendedTab; matches?: readonly FuseResultMatch[] }[] = tabs.map(tab => ({ tab }));
+
+    if (searchQuery) {
+      const fuse = new Fuse(tabs, {
+        keys: ['title', 'url'],
+        threshold: 0.4,
+        distance: 100,
+        ignoreLocation: true,
+        includeMatches: true,
+      });
+      const results = fuse.search(searchQuery);
+      filtered = results.map(result => ({
+        tab: result.item,
+        matches: result.matches,
+      }));
+    }
+
+    const pinned: { tab: ExtendedTab; matches?: readonly FuseResultMatch[] }[] = [];
+    const regular: { tab: ExtendedTab; matches?: readonly FuseResultMatch[] }[] = [];
+
     // Single pass instead of two filter calls
-    for (const tab of filtered) {
-      if (tab.pinned) {
-        pinned.push(tab);
+    for (const item of filtered) {
+      if (item.tab.pinned) {
+        pinned.push(item);
       } else {
-        regular.push(tab);
+        regular.push(item);
       }
     }
-    
+
     return { pinnedTabs: pinned, regularTabs: regular, filteredCount: filtered.length };
   }, [tabs, searchQuery]);
 
   if (isLoading) {
     return (
-      <div style={{ 
-        display: 'flex', 
-        alignItems: 'center', 
-        justifyContent: 'center', 
+      <div style={{
+        display: 'flex',
+        alignItems: 'center',
+        justifyContent: 'center',
         height: '100%',
         color: '#888'
       }}>
@@ -268,9 +279,9 @@ export default function App() {
       </div>
 
       {/* Tab list - scrollable */}
-      <div 
-        style={{ 
-          flex: 1, 
+      <div
+        style={{
+          flex: 1,
           overflowY: 'auto',
           overflowX: 'hidden',
           minHeight: 0,
@@ -284,20 +295,22 @@ export default function App() {
           {/* Pinned tabs */}
           {pinnedTabs.length > 0 && (
             <div style={{ marginBottom: '16px' }}>
-              <div style={{ 
-                fontSize: '11px', 
-                color: '#888', 
-                textTransform: 'uppercase', 
+              <div style={{
+                fontSize: '11px',
+                color: '#888',
+                textTransform: 'uppercase',
                 letterSpacing: '0.05em',
                 padding: '0 8px',
                 marginBottom: '8px'
               }}>
                 Pinned
               </div>
-              {pinnedTabs.map((tab) => (
+              {pinnedTabs.map(({ tab, matches }) => (
                 <Tab
                   key={tab.id}
                   tab={tab}
+                  matches={matches}
+                  searchHighlightQuery={searchQuery}
                   isActive={tab.id === activeTabId}
                   onClick={() => handleTabClick(tab)}
                   onClose={(e) => tab.id && handleCloseTab(e, tab.id)}
@@ -310,10 +323,10 @@ export default function App() {
           {/* Regular tabs */}
           <div>
             {pinnedTabs.length > 0 && regularTabs.length > 0 && (
-              <div style={{ 
-                fontSize: '11px', 
-                color: '#888', 
-                textTransform: 'uppercase', 
+              <div style={{
+                fontSize: '11px',
+                color: '#888',
+                textTransform: 'uppercase',
                 letterSpacing: '0.05em',
                 padding: '0 8px',
                 marginBottom: '8px'
@@ -321,10 +334,12 @@ export default function App() {
                 Tabs ({regularTabs.length})
               </div>
             )}
-            {regularTabs.map((tab) => (
+            {regularTabs.map(({ tab, matches }) => (
               <Tab
                 key={tab.id}
                 tab={tab}
+                matches={matches}
+                searchHighlightQuery={searchQuery}
                 isActive={tab.id === activeTabId}
                 onClick={() => handleTabClick(tab)}
                 onClose={(e) => tab.id && handleCloseTab(e, tab.id)}
