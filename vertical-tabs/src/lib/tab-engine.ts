@@ -19,7 +19,7 @@ export class TabEngine {
   private updateDebounceTimers: Map<number, ReturnType<typeof setTimeout>> = new Map();
   private readonly DEBOUNCE_MS = 100;
   private initialized = false;
-  
+
   // Cache for serialized state to avoid recreating arrays on every read
   private serializedStateCache: SerializedTabState | null = null;
   private cacheLastUpdated: number = 0;
@@ -39,16 +39,16 @@ export class TabEngine {
    */
   async initialize(): Promise<void> {
     if (this.initialized) return;
-    
+
     console.log('[TabEngine] Initializing...');
-    
+
     // Load current state from Chrome
     await this.syncWithChrome();
-    
+
     // Attach event listeners
     this.attachTabListeners();
     this.attachWindowListeners();
-    
+
     this.initialized = true;
     console.log('[TabEngine] Initialized with', this.state.tabs.size, 'tabs');
   }
@@ -60,49 +60,49 @@ export class TabEngine {
   async syncWithChrome(): Promise<void> {
     // Get all windows
     const windows = await chrome.windows.getAll({ populate: true });
-    
+
     // Clear current state
     this.state.tabs.clear();
     this.state.windows.clear();
-    
+
     // Get focused window
     const focusedWindow = windows.find(w => w.focused);
     this.state.activeWindowId = focusedWindow?.id ?? null;
-    
+
     // Process each window and its tabs
     for (const window of windows) {
       if (window.id === undefined) continue;
-      
+
       const tabIds: number[] = [];
-      
+
       if (window.tabs) {
         for (const tab of window.tabs) {
           if (tab.id === undefined) continue;
-          
+
           const extendedTab: ExtendedTab = {
             ...tab,
             lastActiveAt: tab.active ? Date.now() : undefined,
           };
-          
+
           this.state.tabs.set(tab.id, extendedTab);
           tabIds.push(tab.id);
-          
+
           // Track active tab
           if (tab.active && window.focused) {
             this.state.activeTabId = tab.id;
           }
         }
       }
-      
+
       const extendedWindow: ExtendedWindow = {
         id: window.id,
         focused: window.focused ?? false,
         tabIds,
       };
-      
+
       this.state.windows.set(window.id, extendedWindow);
     }
-    
+
     this.state.lastUpdated = Date.now();
     this.notifySubscribers();
   }
@@ -115,14 +115,14 @@ export class TabEngine {
     chrome.tabs.onCreated.addListener((tab) => {
       if (tab.id === undefined) return;
       console.log('[TabEngine] Tab created:', tab.id);
-      
+
       const extendedTab: ExtendedTab = {
         ...tab,
         lastActiveAt: Date.now(),
       };
-      
+
       this.state.tabs.set(tab.id, extendedTab);
-      
+
       // Update window's tab list
       if (tab.windowId !== undefined) {
         const window = this.state.windows.get(tab.windowId);
@@ -130,10 +130,10 @@ export class TabEngine {
           window.tabIds.push(tab.id);
         }
       }
-      
+
       this.state.lastUpdated = Date.now();
       this.notifySubscribers();
-      
+
       broadcastMessage({
         type: 'TAB_CREATED',
         tab: extendedTab,
@@ -144,30 +144,30 @@ export class TabEngine {
     // Tab removed
     chrome.tabs.onRemoved.addListener((tabId, removeInfo) => {
       console.log('[TabEngine] Tab removed:', tabId);
-      
+
       // Clear any pending debounce timer for this tab
       const pendingTimer = this.updateDebounceTimers.get(tabId);
       if (pendingTimer) {
         clearTimeout(pendingTimer);
         this.updateDebounceTimers.delete(tabId);
       }
-      
+
       this.state.tabs.delete(tabId);
-      
+
       // Update window's tab list
       const window = this.state.windows.get(removeInfo.windowId);
       if (window) {
         window.tabIds = window.tabIds.filter(id => id !== tabId);
       }
-      
+
       // Clear active tab if it was removed
       if (this.state.activeTabId === tabId) {
         this.state.activeTabId = null;
       }
-      
+
       this.state.lastUpdated = Date.now();
       this.notifySubscribers();
-      
+
       broadcastMessage({
         type: 'TAB_REMOVED',
         tabId,
@@ -182,30 +182,30 @@ export class TabEngine {
       if (existingTimer) {
         clearTimeout(existingTimer);
       }
-      
+
       const timer = setTimeout(() => {
         this.handleTabUpdated(tabId, changeInfo, tab);
         this.updateDebounceTimers.delete(tabId);
       }, this.DEBOUNCE_MS);
-      
+
       this.updateDebounceTimers.set(tabId, timer);
     });
 
     // Tab activated
     chrome.tabs.onActivated.addListener((activeInfo) => {
       console.log('[TabEngine] Tab activated:', activeInfo.tabId);
-      
+
       // Update lastActiveAt on the newly active tab
       const tab = this.state.tabs.get(activeInfo.tabId);
       if (tab) {
         tab.lastActiveAt = Date.now();
         this.state.tabs.set(activeInfo.tabId, tab);
       }
-      
+
       this.state.activeTabId = activeInfo.tabId;
       this.state.lastUpdated = Date.now();
       this.notifySubscribers();
-      
+
       broadcastMessage({
         type: 'TAB_ACTIVATED',
         tabId: activeInfo.tabId,
@@ -216,7 +216,7 @@ export class TabEngine {
     // Tab moved
     chrome.tabs.onMoved.addListener((tabId, moveInfo) => {
       console.log('[TabEngine] Tab moved:', tabId, moveInfo);
-      
+
       // Update window's tab list order
       const window = this.state.windows.get(moveInfo.windowId);
       if (window) {
@@ -224,17 +224,17 @@ export class TabEngine {
         window.tabIds = window.tabIds.filter(id => id !== tabId);
         window.tabIds.splice(moveInfo.toIndex, 0, tabId);
       }
-      
+
       // Update tab's index
       const tab = this.state.tabs.get(tabId);
       if (tab) {
         tab.index = moveInfo.toIndex;
         this.state.tabs.set(tabId, tab);
       }
-      
+
       this.state.lastUpdated = Date.now();
       this.notifySubscribers();
-      
+
       broadcastMessage({
         type: 'TAB_MOVED',
         tabId,
@@ -247,7 +247,7 @@ export class TabEngine {
     // Tab attached (moved to different window)
     chrome.tabs.onAttached.addListener((tabId, attachInfo) => {
       console.log('[TabEngine] Tab attached:', tabId, attachInfo);
-      
+
       const tab = this.state.tabs.get(tabId);
       if (tab) {
         // Update tab's window
@@ -255,27 +255,34 @@ export class TabEngine {
         tab.index = attachInfo.newPosition;
         this.state.tabs.set(tabId, tab);
       }
-      
+
       // Add to new window's tab list
       const window = this.state.windows.get(attachInfo.newWindowId);
       if (window) {
         window.tabIds.splice(attachInfo.newPosition, 0, tabId);
       }
-      
+
       this.state.lastUpdated = Date.now();
       this.notifySubscribers();
+
+      if (tab) {
+        broadcastMessage({
+          type: 'TAB_UPDATED',
+          tab: tab,
+        });
+      }
     });
 
     // Tab detached (being moved to different window)
     chrome.tabs.onDetached.addListener((tabId, detachInfo) => {
       console.log('[TabEngine] Tab detached:', tabId, detachInfo);
-      
+
       // Remove from old window's tab list
       const window = this.state.windows.get(detachInfo.oldWindowId);
       if (window) {
         window.tabIds = window.tabIds.filter(id => id !== tabId);
       }
-      
+
       this.state.lastUpdated = Date.now();
     });
   }
@@ -287,22 +294,22 @@ export class TabEngine {
     // Only process meaningful changes
     const meaningfulChanges = ['status', 'title', 'url', 'favIconUrl', 'pinned', 'audible', 'mutedInfo'];
     const hasMeaningfulChange = meaningfulChanges.some(key => key in changeInfo);
-    
+
     if (!hasMeaningfulChange) return;
-    
+
     console.log('[TabEngine] Tab updated:', tabId, Object.keys(changeInfo));
-    
+
     const existingTab = this.state.tabs.get(tabId);
     const extendedTab: ExtendedTab = {
       ...tab,
       lastActiveAt: existingTab?.lastActiveAt,
       spaceId: existingTab?.spaceId,
     };
-    
+
     this.state.tabs.set(tabId, extendedTab);
     this.state.lastUpdated = Date.now();
     this.notifySubscribers();
-    
+
     broadcastMessage({
       type: 'TAB_UPDATED',
       tab: extendedTab,
@@ -317,17 +324,17 @@ export class TabEngine {
     chrome.windows.onCreated.addListener(async (window) => {
       if (window.id === undefined) return;
       console.log('[TabEngine] Window created:', window.id);
-      
+
       const extendedWindow: ExtendedWindow = {
         id: window.id,
         focused: window.focused ?? false,
         tabIds: [],
       };
-      
+
       this.state.windows.set(window.id, extendedWindow);
       this.state.lastUpdated = Date.now();
       this.notifySubscribers();
-      
+
       broadcastMessage({
         type: 'WINDOW_CREATED',
         windowId: window.id,
@@ -337,7 +344,7 @@ export class TabEngine {
     // Window removed
     chrome.windows.onRemoved.addListener((windowId) => {
       console.log('[TabEngine] Window removed:', windowId);
-      
+
       // Remove all tabs belonging to this window
       const window = this.state.windows.get(windowId);
       if (window) {
@@ -345,18 +352,18 @@ export class TabEngine {
           this.state.tabs.delete(tabId);
         }
       }
-      
+
       this.state.windows.delete(windowId);
-      
+
       // Clear active window if it was removed
       if (this.state.activeWindowId === windowId) {
         this.state.activeWindowId = null;
         this.state.activeTabId = null;
       }
-      
+
       this.state.lastUpdated = Date.now();
       this.notifySubscribers();
-      
+
       broadcastMessage({
         type: 'WINDOW_REMOVED',
         windowId,
@@ -367,12 +374,12 @@ export class TabEngine {
     chrome.windows.onFocusChanged.addListener((windowId) => {
       // windowId is -1 when Chrome loses focus
       if (windowId === chrome.windows.WINDOW_ID_NONE) return;
-      
+
       // Skip if already focused on this window
       if (this.state.activeWindowId === windowId) return;
-      
+
       console.log('[TabEngine] Window focused:', windowId);
-      
+
       // Only update the previously focused and newly focused windows (not all)
       const prevWindowId = this.state.activeWindowId;
       if (prevWindowId !== null) {
@@ -381,16 +388,16 @@ export class TabEngine {
           prevWindow.focused = false;
         }
       }
-      
+
       const newWindow = this.state.windows.get(windowId);
       if (newWindow) {
         newWindow.focused = true;
       }
-      
+
       this.state.activeWindowId = windowId;
       this.state.lastUpdated = Date.now();
       this.notifySubscribers();
-      
+
       broadcastMessage({
         type: 'WINDOW_FOCUSED',
         windowId,
@@ -406,7 +413,7 @@ export class TabEngine {
     if (this.serializedStateCache && this.cacheLastUpdated === this.state.lastUpdated) {
       return this.serializedStateCache;
     }
-    
+
     // Rebuild cache
     this.serializedStateCache = {
       tabs: Array.from(this.state.tabs.values()),
@@ -416,10 +423,10 @@ export class TabEngine {
       lastUpdated: this.state.lastUpdated,
     };
     this.cacheLastUpdated = this.state.lastUpdated;
-    
+
     return this.serializedStateCache;
   }
-  
+
   /**
    * Invalidate the serialized state cache (called when state changes)
    */
@@ -433,7 +440,7 @@ export class TabEngine {
   getTabsForWindow(windowId: number): ExtendedTab[] {
     const window = this.state.windows.get(windowId);
     if (!window) return [];
-    
+
     return window.tabIds
       .map(id => this.state.tabs.get(id))
       .filter((tab): tab is ExtendedTab => tab !== undefined)

@@ -7,10 +7,24 @@ interface TabProps {
   onClick: () => void;
   onClose: (e: React.MouseEvent) => void;
   onContextMenu: (e: React.MouseEvent) => void;
+  onDragStart?: (e: React.DragEvent) => void;
+  onDragEnd?: (e: React.DragEvent) => void;
 }
 
 // Memoized Tab component - only re-renders when props actually change
-const Tab = memo(function Tab({ tab, isActive, onClick, onClose, onContextMenu }: TabProps) {
+// Memoized Tab component - only re-renders when props actually change
+const Tab = memo(function Tab({
+  tab,
+  isActive,
+  onClick,
+  onClose,
+  onContextMenu,
+  onDragStart,
+  onDragEnd,
+  variant = 'default',
+}: TabProps & {
+  variant?: 'default' | 'compact' | 'minimal' | 'elongated';
+}) {
   // Track image error and loading state
   const [imgError, setImgError] = useState(false);
   const [imgLoaded, setImgLoaded] = useState(false);
@@ -51,13 +65,21 @@ const Tab = memo(function Tab({ tab, isActive, onClick, onClose, onContextMenu }
     }
   };
 
+  const isCompact = variant === 'compact';
+  const isMinimal = variant === 'minimal';
+  const isElongated = variant === 'elongated';
+  const isDefault = variant === 'default' || isElongated;
+
   return (
     <div
-      className="tab-item"
+      className={`tab-item ${isCompact ? 'tab-item-compact' : ''} ${isMinimal ? 'tab-item-minimal' : ''} ${isElongated ? 'tab-item-elongated' : ''}`}
       data-active={isActive}
       onClick={onClick}
       onContextMenu={onContextMenu}
       onMouseDown={handleMouseDown}
+      draggable={onDragStart !== undefined}
+      onDragStart={onDragStart}
+      onDragEnd={onDragEnd}
       title={tab.title}
     >
       {/* Favicon */}
@@ -80,10 +102,10 @@ const Tab = memo(function Tab({ tab, isActive, onClick, onClose, onContextMenu }
               onLoad={() => {
                 setImgLoaded(true);
               }}
-              style={{ 
+              style={{
                 display: imgLoaded ? 'block' : 'none',
-                width: '32px',
-                height: '32px',
+                width: isDefault ? '32px' : '20px',
+                height: isDefault ? '32px' : '20px',
                 objectFit: 'contain',
               }}
             />
@@ -97,21 +119,25 @@ const Tab = memo(function Tab({ tab, isActive, onClick, onClose, onContextMenu }
         )}
       </div>
 
-      {/* Title */}
-      <span className="tab-title">
-        {tab.title || 'New Tab'}
-      </span>
+      {/* Title - Only show if default */}
+      {isDefault && (
+        <span className="tab-title">
+          {tab.title || 'New Tab'}
+        </span>
+      )}
 
-      {/* Close button */}
-      <button
-        className="tab-close"
-        onClick={onClose}
-        aria-label="Close tab"
-      >
-        <svg fill="none" stroke="currentColor" viewBox="0 0 24 24">
-          <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M6 18L18 6M6 6l12 12" />
-        </svg>
-      </button>
+      {/* Close button - Only show if default */}
+      {isDefault && (
+        <button
+          className="tab-close"
+          onClick={onClose}
+          aria-label="Close tab"
+        >
+          <svg fill="none" stroke="currentColor" viewBox="0 0 24 24">
+            <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M6 18L18 6M6 6l12 12" />
+          </svg>
+        </button>
+      )}
 
       <style>{`
         .tab-item {
@@ -132,6 +158,39 @@ const Tab = memo(function Tab({ tab, isActive, onClick, onClose, onContextMenu }
           -ms-user-select: none;
           user-select: none;
         }
+
+        .tab-item-compact {
+          display: flex;
+          flex-direction: column;
+          align-items: center;
+          background-color: rgba(48, 49, 50, 0.4);
+          padding: 8px;
+          gap: 1px;
+          margin-bottom: 0;
+          justify-content: center;
+          width: 96px;
+          height: 48px;
+
+        }
+
+        .tab-item-minimal {
+          background-color: rgba(48, 49, 50, 0.4);
+          padding: 8px;
+          gap: 0;
+          margin-bottom: 0;
+          justify-content: center;
+          width: 112px;
+          height: 48px;
+        }
+        
+        .tab-item-elongated {
+          width: 100%;
+          height: 48px;
+          background-color: rgba(48, 49, 50, 0.4);
+          padding: 8px;
+          gap: 12px;
+          margin-bottom: 0;
+        }
         
         .tab-item * {
           -webkit-touch-callout: none;
@@ -148,7 +207,13 @@ const Tab = memo(function Tab({ tab, isActive, onClick, onClose, onContextMenu }
         
         .tab-item[data-active="true"] {
           background-color: rgba(55, 65, 81, 0.5);
-          border-left-color: #4a9eff;
+          border-left-color: #233955ff;
+        }
+
+        .tab-item-compact[data-active="true"],
+        .tab-item-minimal[data-active="true"] {
+          border-left: none;
+          border-bottom: 2px solid #233955ff; 
         }
         
         .tab-icon {
@@ -166,6 +231,12 @@ const Tab = memo(function Tab({ tab, isActive, onClick, onClose, onContextMenu }
           -ms-user-select: none;
           user-select: none;
         }
+
+        .tab-item-compact .tab-icon,
+        .tab-item-minimal .tab-icon {
+          width: 20px;
+          height: 20px;
+        }
         
         .tab-icon img {
           width: 32px;
@@ -177,6 +248,12 @@ const Tab = memo(function Tab({ tab, isActive, onClick, onClose, onContextMenu }
           -moz-user-select: none;
           -ms-user-select: none;
           user-select: none;
+        }
+
+        .tab-item-compact .tab-icon img,
+        .tab-item-minimal .tab-icon img {
+          width: 20px;
+          height: 20px;
         }
         
         .tab-icon-fallback {
@@ -194,6 +271,12 @@ const Tab = memo(function Tab({ tab, isActive, onClick, onClose, onContextMenu }
           -ms-user-select: none;
           user-select: none;
         }
+
+        .tab-item-compact .tab-icon-fallback,
+        .tab-item-minimal .tab-icon-fallback {
+            width: 20px;
+            height: 20px;
+        }
         
         .tab-icon-fallback svg {
           width: 20px;
@@ -206,6 +289,12 @@ const Tab = memo(function Tab({ tab, isActive, onClick, onClose, onContextMenu }
           -ms-user-select: none;
           user-select: none;
         }
+
+        .tab-item-compact .tab-icon-fallback svg,
+        .tab-item-minimal .tab-icon-fallback svg {
+            width: 14px;
+            height: 14px;
+        }
         
         .tab-icon-loader {
           position: absolute;
@@ -215,6 +304,12 @@ const Tab = memo(function Tab({ tab, isActive, onClick, onClose, onContextMenu }
           align-items: center;
           justify-content: center;
         }
+
+        .tab-item-compact .tab-icon-loader,
+        .tab-item-minimal .tab-icon-loader {
+            width: 20px;
+            height: 20px;
+        }
         
         .loader {
           width: 32px;
@@ -222,6 +317,13 @@ const Tab = memo(function Tab({ tab, isActive, onClick, onClose, onContextMenu }
           border-radius: 50%;
           position: relative;
           animation: rotate 1s linear infinite;
+        }
+
+        .tab-item-compact .loader,
+        .tab-item-minimal .loader {
+            width: 20px;
+            height: 20px;
+            border-width: 2px;
         }
         
         .loader::before {
@@ -232,6 +334,11 @@ const Tab = memo(function Tab({ tab, isActive, onClick, onClose, onContextMenu }
           border-radius: 50%;
           border: 3px solid #9ca3af;
           animation: prixClipFix 2s linear infinite;
+        }
+
+        .tab-item-compact .loader::before,
+        .tab-item-minimal .loader::before {
+            border-width: 2px;
         }
         
         @keyframes rotate {
@@ -313,7 +420,8 @@ const Tab = memo(function Tab({ tab, isActive, onClick, onClose, onContextMenu }
     prevProps.tab.id === nextProps.tab.id &&
     prevProps.tab.title === nextProps.tab.title &&
     prevProps.tab.favIconUrl === nextProps.tab.favIconUrl &&
-    prevProps.tab.pinned === nextProps.tab.pinned
+    prevProps.tab.pinned === nextProps.tab.pinned &&
+    prevProps.variant === nextProps.variant
   );
 });
 

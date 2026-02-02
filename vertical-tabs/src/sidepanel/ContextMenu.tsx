@@ -9,6 +9,8 @@ interface ContextMenuProps {
   onCloseTab: () => void;
   onMute: () => void;
   isMuted: boolean;
+  onTogglePin: () => void;
+  isPinned: boolean;
 }
 
 export default function ContextMenu({
@@ -20,6 +22,8 @@ export default function ContextMenu({
   onCloseTab,
   onMute,
   isMuted,
+  onTogglePin,
+  isPinned,
 }: ContextMenuProps) {
   const menuRef = useRef<HTMLDivElement>(null);
 
@@ -83,6 +87,9 @@ export default function ContextMenu({
     >
       <div className="context-menu-item" onClick={onCopyLink}>
         Copy Link
+      </div>
+      <div className="context-menu-item" onClick={onTogglePin}>
+        {isPinned ? 'Unpin Tab' : 'Pin Tab'}
       </div>
       <div className="context-menu-item" onClick={onReload}>
         Reload

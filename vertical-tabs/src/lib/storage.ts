@@ -1,4 +1,4 @@
-import type { Space, UserSettings, PersistedState, SerializedTabState } from '@/types';
+import type { Space, UserSettings, PersistedState, SerializedTabState, SavedPin } from '@/types';
 
 // ============================================
 // Storage Keys
@@ -8,6 +8,7 @@ const STORAGE_KEYS = {
   SETTINGS: 'user_settings',
   SPACES: 'spaces',
   TAB_METADATA: 'tab_metadata',
+  SAVED_PINS: 'saved_pins',
 } as const;
 
 // ============================================
@@ -69,7 +70,7 @@ export async function saveTabMetadata(metadata: TabMetadata): Promise<void> {
 }
 
 export async function updateTabMetadata(
-  tabId: number, 
+  tabId: number,
   data: { spaceId?: string; lastActiveAt?: number }
 ): Promise<void> {
   const metadata = await loadTabMetadata();
@@ -84,21 +85,34 @@ export async function removeTabMetadata(tabId: number): Promise<void> {
 }
 
 // ============================================
+// Saved Pins
+// ============================================
+export async function loadSavedPins(): Promise<SavedPin[]> {
+  const result = await chrome.storage.local.get(STORAGE_KEYS.SAVED_PINS);
+  return result[STORAGE_KEYS.SAVED_PINS] || [];
+}
+
+export async function saveSavedPins(savedPins: SavedPin[]): Promise<void> {
+  await chrome.storage.local.set({ [STORAGE_KEYS.SAVED_PINS]: savedPins });
+}
+
+// ============================================
 // Full Persisted State
 // ============================================
 export async function loadPersistedState(): Promise<PersistedState> {
-  const [settings, spaces, tabMetadata] = await Promise.all([
+  const [settings, spaces, tabMetadata, savedPins] = await Promise.all([
     loadSettings(),
     loadSpaces(),
     loadTabMetadata(),
+    loadSavedPins(),
   ]);
-  
-  return { settings, spaces, tabMetadata };
+
+  return { settings, spaces, tabMetadata, savedPins };
 }
 
 export async function savePersistedState(state: Partial<PersistedState>): Promise<void> {
   const updates: Record<string, unknown> = {};
-  
+
   if (state.settings) {
     updates[STORAGE_KEYS.SETTINGS] = state.settings;
   }
@@ -108,7 +122,10 @@ export async function savePersistedState(state: Partial<PersistedState>): Promis
   if (state.tabMetadata) {
     updates[STORAGE_KEYS.TAB_METADATA] = state.tabMetadata;
   }
-  
+  if (state.savedPins) {
+    updates[STORAGE_KEYS.SAVED_PINS] = state.savedPins;
+  }
+
   if (Object.keys(updates).length > 0) {
     await chrome.storage.local.set(updates);
   }
@@ -121,6 +138,7 @@ export class StateManager {
   private spaces: Space[] = [DEFAULT_SPACE];
   private settings: UserSettings = DEFAULT_SETTINGS;
   private tabMetadata: TabMetadata = {};
+  private savedPins: SavedPin[] = []; // Initialize empty
   private saveDebounceTimer: ReturnType<typeof setTimeout> | null = null;
   private readonly SAVE_DEBOUNCE_MS = 500;
   private initialized = false;
@@ -131,16 +149,18 @@ export class StateManager {
    */
   async initialize(): Promise<void> {
     if (this.initialized) return;
-    
+
     console.log('[StateManager] Loading persisted state...');
     const persisted = await loadPersistedState();
-    
+
     this.spaces = persisted.spaces;
     this.settings = persisted.settings;
     this.tabMetadata = persisted.tabMetadata;
+    this.savedPins = persisted.savedPins;
     this.initialized = true;
-    
+
     console.log('[StateManager] Loaded', this.spaces.length, 'spaces');
+    console.log('[StateManager] Loaded', this.savedPins.length, 'saved pins');
   }
 
   /**
@@ -221,16 +241,16 @@ export class StateManager {
   removeSpace(spaceId: string): void {
     // Don't remove the default space
     if (spaceId === 'default') return;
-    
+
     this.spaces = this.spaces.filter(s => s.id !== spaceId);
-    
+
     // Move tabs from deleted space to default
     for (const tabId in this.tabMetadata) {
       if (this.tabMetadata[tabId]?.spaceId === spaceId) {
         this.tabMetadata[tabId].spaceId = 'default';
       }
     }
-    
+
     this.scheduleSave();
     this.notifyListeners();
   }
@@ -280,7 +300,7 @@ export class StateManager {
     if (this.saveDebounceTimer) {
       clearTimeout(this.saveDebounceTimer);
     }
-    
+
     this.saveDebounceTimer = setTimeout(async () => {
       console.log('[StateManager] Persisting state...');
       await savePersistedState({

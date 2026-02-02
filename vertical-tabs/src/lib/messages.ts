@@ -1,4 +1,4 @@
-import type { ExtendedTab, SerializedTabState, Space, AppState } from '@/types';
+import type { ExtendedTab, SerializedTabState, Space, AppState, SavedPin } from '@/types';
 
 // ============================================
 // Messages from UI to Service Worker
@@ -23,14 +23,16 @@ export type UIMessage =
   | { type: 'ASSIGN_TAB_TO_SPACE'; tabId: number; spaceId: string }
   | { type: 'CREATE_SPACE'; name: string; color: string }
   | { type: 'DELETE_SPACE'; spaceId: string }
-  | { type: 'RENAME_SPACE'; spaceId: string; name: string };
+  | { type: 'DELETE_SPACE'; spaceId: string }
+  | { type: 'RENAME_SPACE'; spaceId: string; name: string }
+  | { type: 'UNPIN_SAVED_ITEM'; url: string };
 
 // ============================================
 // Messages from Service Worker to UI
 // ============================================
 export type BackgroundMessage =
   // Full state sync
-  | { type: 'STATE_SYNC'; state: SerializedTabState; spaces: Space[] }
+  | { type: 'STATE_SYNC'; state: SerializedTabState; spaces: Space[]; savedPins: SavedPin[] }
   // Incremental updates
   | { type: 'TAB_CREATED'; tab: ExtendedTab; windowId: number }
   | { type: 'TAB_REMOVED'; tabId: number; windowId: number }
@@ -42,7 +44,7 @@ export type BackgroundMessage =
   | { type: 'WINDOW_REMOVED'; windowId: number }
   | { type: 'WINDOW_FOCUSED'; windowId: number }
   // Space updates
-  | { type: 'SPACES_UPDATED'; spaces: Space[] }
+  | { type: 'SPACES_UPDATED'; spaces: Space[]; savedPins: SavedPin[] }
   // Side panel UI events
   | { type: 'SIDE_PANEL_CLOSING'; windowId: number };
 
@@ -74,7 +76,7 @@ export function onMessage(
 // Type guard for background messages
 function isBackgroundMessage(message: Message): message is BackgroundMessage {
   const bgTypes = [
-    'STATE_SYNC', 'TAB_CREATED', 'TAB_REMOVED', 'TAB_UPDATED', 
+    'STATE_SYNC', 'TAB_CREATED', 'TAB_REMOVED', 'TAB_UPDATED',
     'TAB_MOVED', 'TAB_ACTIVATED', 'WINDOW_CREATED', 'WINDOW_REMOVED',
     'WINDOW_FOCUSED', 'SPACES_UPDATED', 'SIDE_PANEL_CLOSING'
   ];

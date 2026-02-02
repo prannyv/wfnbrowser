@@ -58,9 +58,17 @@ export interface UserSettings {
   staleTabThresholdDays: number;
 }
 
+// Saved Pin
+export interface SavedPin {
+  url: string;
+  title: string;
+  favIconUrl?: string;
+}
+
 // Persisted state shape
 export interface PersistedState {
   spaces: Space[];
   settings: UserSettings;
   tabMetadata: Record<number, { spaceId?: string; lastActiveAt?: number }>;
+  savedPins: SavedPin[];
 }
