@@ -495,15 +495,18 @@ export default function App() {
               </div>
               <div style={{
                 display: 'flex',
+                flexDirection: 'row',
                 flexWrap: 'wrap',
                 gap: '4px',
-                padding: '0 4px',
-                justifyContent: (pinnedTabVariant === 'minimal' || pinnedTabVariant === 'compact') ? 'center' : undefined,
+                padding: '4px 12px',
+                justifyContent: 'flex-start',
+                alignItems: 'flex-end',
                 backgroundColor: isDragOverPinned ? 'rgba(59, 130, 246, 0.1)' : undefined,
                 border: isDragOverPinned ? '2px solid rgba(59, 130, 246, 0.5)' : '2px solid transparent',
                 borderRadius: '8px',
                 transition: 'all 0.2s ease',
                 minHeight: '56px',
+                width: '100%',
               }}>
                 {pinnedTabs.map((tab) => (
                   <Tab

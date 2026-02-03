@@ -68,7 +68,7 @@ const Tab = memo(function Tab({
   const isCompact = variant === 'compact';
   const isMinimal = variant === 'minimal';
   const isElongated = variant === 'elongated';
-  const isDefault = variant === 'default' || isElongated;
+  const isDefault = variant === 'default';
 
   return (
     <div
@@ -104,8 +104,8 @@ const Tab = memo(function Tab({
               }}
               style={{
                 display: imgLoaded ? 'block' : 'none',
-                width: isDefault ? '32px' : '20px',
-                height: isDefault ? '32px' : '20px',
+                width: (isDefault) ? '32px' : '20px',
+                height: (isDefault) ? '32px' : '20px',
                 objectFit: 'contain',
               }}
             />
@@ -161,35 +161,43 @@ const Tab = memo(function Tab({
 
         .tab-item-compact {
           display: flex;
-          flex-direction: column;
-          align-items: center;
+          flex-direction: row;
+          flex-wrap: wrap;  
+          min-width: 0;
           background-color: rgba(48, 49, 50, 0.4);
           padding: 8px;
           gap: 1px;
           margin-bottom: 0;
           justify-content: center;
-          width: 96px;
-          height: 48px;
-
+          width: calc(33.33% - 3px);
+          height: 36px;
         }
 
         .tab-item-minimal {
+          display: flex;
+          flex-direction: column;
+          flex-wrap: wrap;  
+          min-width: 0;
           background-color: rgba(48, 49, 50, 0.4);
           padding: 8px;
           gap: 0;
           margin-bottom: 0;
           justify-content: center;
-          width: 112px;
-          height: 48px;
+          width: calc(50% - 2px);
+          height: 36px;
         }
         
         .tab-item-elongated {
-          width: 100%;
-          height: 48px;
+          display: flex;
+          flex-direction: row;
+          flex-wrap: wrap;  
+          width: calc(50% - 2px);
+          height: 56px;
           background-color: rgba(48, 49, 50, 0.4);
           padding: 8px;
           gap: 12px;
           margin-bottom: 0;
+          justify-content: center;
         }
         
         .tab-item * {
@@ -211,7 +219,8 @@ const Tab = memo(function Tab({
         }
 
         .tab-item-compact[data-active="true"],
-        .tab-item-minimal[data-active="true"] {
+        .tab-item-minimal[data-active="true"],
+        .tab-item-elongated[data-active="true"] {
           border-left: none;
           border-bottom: 2px solid #233955ff; 
         }
@@ -233,7 +242,8 @@ const Tab = memo(function Tab({
         }
 
         .tab-item-compact .tab-icon,
-        .tab-item-minimal .tab-icon {
+        .tab-item-minimal .tab-icon,
+        .tab-item-elongated .tab-icon {
           width: 20px;
           height: 20px;
         }
@@ -251,7 +261,8 @@ const Tab = memo(function Tab({
         }
 
         .tab-item-compact .tab-icon img,
-        .tab-item-minimal .tab-icon img {
+        .tab-item-minimal .tab-icon img,
+        .tab-item-elongated .tab-icon img {
           width: 20px;
           height: 20px;
         }
@@ -273,7 +284,8 @@ const Tab = memo(function Tab({
         }
 
         .tab-item-compact .tab-icon-fallback,
-        .tab-item-minimal .tab-icon-fallback {
+        .tab-item-minimal .tab-icon-fallback,
+        .tab-item-elongated .tab-icon-fallback {
             width: 20px;
             height: 20px;
         }
@@ -291,7 +303,8 @@ const Tab = memo(function Tab({
         }
 
         .tab-item-compact .tab-icon-fallback svg,
-        .tab-item-minimal .tab-icon-fallback svg {
+        .tab-item-minimal .tab-icon-fallback svg,
+        .tab-item-elongated .tab-icon-fallback svg {
             width: 14px;
             height: 14px;
         }
@@ -306,7 +319,8 @@ const Tab = memo(function Tab({
         }
 
         .tab-item-compact .tab-icon-loader,
-        .tab-item-minimal .tab-icon-loader {
+        .tab-item-minimal .tab-icon-loader,
+        .tab-item-elongated .tab-icon-loader {
             width: 20px;
             height: 20px;
         }
@@ -320,7 +334,8 @@ const Tab = memo(function Tab({
         }
 
         .tab-item-compact .loader,
-        .tab-item-minimal .loader {
+        .tab-item-minimal .loader,
+        .tab-item-elongated .loader {
             width: 20px;
             height: 20px;
             border-width: 2px;
@@ -337,7 +352,8 @@ const Tab = memo(function Tab({
         }
 
         .tab-item-compact .loader::before,
-        .tab-item-minimal .loader::before {
+        .tab-item-minimal .loader::before,
+        .tab-item-elongated .loader::before {
             border-width: 2px;
         }
         
