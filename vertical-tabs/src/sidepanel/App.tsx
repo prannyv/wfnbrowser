@@ -320,7 +320,9 @@ export default function App() {
     setIsDragOverPinned(true);
   }, []);
 
-  const handleDragLeave = useCallback(() => {
+  const handleDragLeave = useCallback((e: React.DragEvent) => {
+    // Prevent flickering when dragging over children (tabs)
+    if (e.currentTarget.contains(e.relatedTarget as Node)) return;
     setIsDragOverPinned(false);
   }, []);
 
@@ -358,7 +360,9 @@ export default function App() {
     setIsDragOverRegular(true);
   }, []);
 
-  const handleDragLeaveRegular = useCallback(() => {
+  const handleDragLeaveRegular = useCallback((e: React.DragEvent) => {
+    // Prevent flickering when dragging over children (tabs)
+    if (e.currentTarget.contains(e.relatedTarget as Node)) return;
     setIsDragOverRegular(false);
   }, []);
 
@@ -403,15 +407,18 @@ export default function App() {
     }
 
     // Determine variant based on count
-    let variant = 'elongated';
+    let variant = 'single';
     if (pinned.length > 4) {
       // 5-6 tabs: Compact (Rectangles, 96px wide)
       variant = 'compact';
     } else if (pinned.length > 2) {
       // 3-4 tabs: Minimal (Squares, 48px wide)
       variant = 'minimal';
+    } else if (pinned.length === 2) {
+      // 2 tabs: Elongated
+      variant = 'elongated';
     }
-    // 1-2 tabs: Full (Default)
+    // 1 tab: Single (Default)
 
     return {
       pinnedTabs: pinned,
@@ -474,8 +481,8 @@ export default function App() {
           msUserSelect: 'none',
         }}
       >
-        <div style={{ padding: '8px' }}>
-          {/* Pinned tabs */}
+        <div style={{ padding: '8px', minHeight: '100%', display: 'flex', flexDirection: 'column', boxSizing: 'border-box' }}>
+          {/*Pinned tabs*/}
           {pinnedTabs.length > 0 && (
             <div
               style={{ marginBottom: '16px' }}
@@ -491,7 +498,6 @@ export default function App() {
                 padding: '0 8px',
                 marginBottom: '8px'
               }}>
-                Pinned Tabs
               </div>
               <div style={{
                 display: 'flex',
@@ -513,7 +519,7 @@ export default function App() {
                     key={tab.id}
                     tab={tab}
                     isActive={tab.id === activeTabId}
-                    variant={pinnedTabVariant === 'full' ? 'default' : pinnedTabVariant as 'default' | 'compact' | 'minimal' | 'elongated'}
+                    variant={pinnedTabVariant === 'full' ? 'default' : pinnedTabVariant as 'default' | 'compact' | 'minimal' | 'elongated' | 'single'}
                     onClick={() => handleTabClick(tab)}
                     onClose={(e) => tab.id && handleCloseTab(e, tab.id)}
                     onContextMenu={(e) => handleContextMenu(e, tab)}
@@ -540,6 +546,7 @@ export default function App() {
           )}
           <div
             style={{
+              flex: 1,
               minHeight: '100px',
               backgroundColor: isDragOverRegular ? 'rgba(59, 130, 246, 0.1)' : undefined,
               border: isDragOverRegular ? '2px solid rgba(59, 130, 246, 0.5)' : '2px solid transparent',
