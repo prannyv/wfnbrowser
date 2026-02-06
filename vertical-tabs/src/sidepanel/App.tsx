@@ -1,12 +1,11 @@
 import { useEffect, useState, useCallback, useMemo, useRef } from 'react';
-import type { ExtendedTab, SavedPin } from '@/types';
+import type { ExtendedTab } from '@/types';
 import { sendMessage, onMessage } from '@/lib/messages';
 import Tab from './Tab';
 import ContextMenu from './ContextMenu';
 
 export default function App() {
   const [tabs, setTabs] = useState<ExtendedTab[]>([]);
-  const [savedPins, setSavedPins] = useState<SavedPin[]>([]);
   const [activeTabId, setActiveTabId] = useState<number | null>(null);
   const [currentWindowId, setCurrentWindowId] = useState<number | null>(null);
   const [searchQuery, setSearchQuery] = useState('');
@@ -220,7 +219,7 @@ export default function App() {
     const isPinning = !tab.pinned;
 
     // Check count limit
-    const currentPinnedCount = tabs.filter(t => t.pinned).length; //
+    const currentPinnedCount = tabs.filter(t => t.pinned).length;
 
     if (isPinning && currentPinnedCount >= 6) {
       setErrorMessage({
@@ -234,21 +233,14 @@ export default function App() {
     }
 
     if (tab.id && tab.id > 0) {
-      // Real tab
       sendMessage({
         type: 'PIN_TAB',
         tabId: tab.id,
         pinned: isPinning
       });
-    } else if (tab.url && !isPinning) {
-      // Ghost tab (unpinning)
-      sendMessage({
-        type: 'UNPIN_SAVED_ITEM',
-        url: tab.url
-      });
     }
     setContextMenu(null);
-  }, [contextMenu, savedPins]);
+  }, [contextMenu, tabs]);
 
   const handleDragStart = useCallback((tab: ExtendedTab) => (e: React.DragEvent) => {
     if (!tab.id) return;
@@ -498,6 +490,7 @@ export default function App() {
                 padding: '0 8px',
                 marginBottom: '8px'
               }}>
+                Pinned Tabs
               </div>
               <div style={{
                 display: 'flex',
@@ -519,7 +512,7 @@ export default function App() {
                     key={tab.id}
                     tab={tab}
                     isActive={tab.id === activeTabId}
-                    variant={pinnedTabVariant === 'full' ? 'default' : pinnedTabVariant as 'default' | 'compact' | 'minimal' | 'elongated' | 'single'}
+                    variant={pinnedTabVariant as 'default' | 'compact' | 'minimal' | 'elongated' | 'single'}
                     onClick={() => handleTabClick(tab)}
                     onClose={(e) => tab.id && handleCloseTab(e, tab.id)}
                     onContextMenu={(e) => handleContextMenu(e, tab)}

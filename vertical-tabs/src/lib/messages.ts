@@ -1,4 +1,4 @@
-import type { ExtendedTab, SerializedTabState, Space, AppState, SavedPin } from '@/types';
+import type { ExtendedTab, SerializedTabState, Space } from '@/types';
 
 // ============================================
 // Messages from UI to Service Worker
@@ -23,16 +23,14 @@ export type UIMessage =
   | { type: 'ASSIGN_TAB_TO_SPACE'; tabId: number; spaceId: string }
   | { type: 'CREATE_SPACE'; name: string; color: string }
   | { type: 'DELETE_SPACE'; spaceId: string }
-  | { type: 'DELETE_SPACE'; spaceId: string }
-  | { type: 'RENAME_SPACE'; spaceId: string; name: string }
-  | { type: 'UNPIN_SAVED_ITEM'; url: string };
+  | { type: 'RENAME_SPACE'; spaceId: string; name: string };
 
 // ============================================
 // Messages from Service Worker to UI
 // ============================================
 export type BackgroundMessage =
   // Full state sync
-  | { type: 'STATE_SYNC'; state: SerializedTabState; spaces: Space[]; savedPins: SavedPin[] }
+  | { type: 'STATE_SYNC'; state: SerializedTabState; spaces: Space[] }
   // Incremental updates
   | { type: 'TAB_CREATED'; tab: ExtendedTab; windowId: number }
   | { type: 'TAB_REMOVED'; tabId: number; windowId: number }
@@ -44,7 +42,7 @@ export type BackgroundMessage =
   | { type: 'WINDOW_REMOVED'; windowId: number }
   | { type: 'WINDOW_FOCUSED'; windowId: number }
   // Space updates
-  | { type: 'SPACES_UPDATED'; spaces: Space[]; savedPins: SavedPin[] }
+  | { type: 'SPACES_UPDATED'; spaces: Space[] }
   // Side panel UI events
   | { type: 'SIDE_PANEL_CLOSING'; windowId: number };
 
