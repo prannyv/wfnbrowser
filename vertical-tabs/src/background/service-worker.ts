@@ -5,11 +5,14 @@ import type { ExtendedTab } from '@/types';
 
 console.log('[ServiceWorker] Loading...');
 
+const DEFAULT_SPACE_ID = 'default';
+
 // ============================================
 // Initialize Core Systems
 // ============================================
 const tabEngine = getTabEngine();
 const stateManager = getStateManager();
+let hasRegisteredSpaceListeners = false;
 
 async function initialize(): Promise<void> {
   console.log('[ServiceWorker] Initializing...');
@@ -41,6 +44,25 @@ async function initialize(): Promise<void> {
       spaces: stateManager.getSpaces(),
     });
   });
+
+  if (!hasRegisteredSpaceListeners) {
+    chrome.tabs.onCreated.addListener((tab) => {
+      if (tab.id === undefined) return;
+      const metadata = stateManager.getTabMetadata();
+      if (metadata[tab.id]?.spaceId) return;
+
+      const assignedSpaceId = stateManager.assignTabToSpace(tab.id, DEFAULT_SPACE_ID);
+      tabEngine.updateTabMetadata(tab.id, { spaceId: assignedSpaceId });
+      const updatedTab = tabEngine.getTab(tab.id);
+      if (updatedTab) {
+        broadcastMessage({
+          type: 'TAB_UPDATED',
+          tab: { ...updatedTab, spaceId: assignedSpaceId },
+        });
+      }
+    });
+    hasRegisteredSpaceListeners = true;
+  }
 
   console.log('[ServiceWorker] Initialized');
 }

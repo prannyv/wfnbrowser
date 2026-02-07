@@ -1,4 +1,5 @@
 import { useEffect, useState, useCallback, useMemo, useRef } from 'react';
+import type React from 'react';
 import type { ExtendedTab, Space } from '@/types';
 import { sendMessage, onMessage } from '@/lib/messages';
 import Tab from './Tab';
@@ -578,9 +579,16 @@ export default function App() {
 
           {spaces.map(space => (
             <div key={space.id} style={{ display: 'flex', alignItems: 'center', gap: '4px' }}>
-              <button
-                type="button"
+              <div
+                role="button"
+                tabIndex={0}
                 onClick={() => handleSpaceSelect(space.id)}
+                onKeyDown={(event) => {
+                  if (event.key === 'Enter' || event.key === ' ') {
+                    event.preventDefault();
+                    handleSpaceSelect(space.id);
+                  }
+                }}
                 onDragOver={handleSpaceDragOver(space.id)}
                 onDrop={handleSpaceDrop(space.id)}
                 onDragLeave={handleSpaceDragLeave(space.id)}
@@ -596,11 +604,12 @@ export default function App() {
                   display: 'flex',
                   alignItems: 'center',
                   gap: '6px',
+                  outline: 'none',
                 }}
               >
                 {space.icon && <span>{space.icon}</span>}
                 <span>{space.name}</span>
-              </button>
+              </div>
               <button
                 type="button"
                 onClick={() => openEditSpaceModal(space.id)}

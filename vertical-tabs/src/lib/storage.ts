@@ -104,6 +104,9 @@ export async function loadSpaces(): Promise<Space[]> {
   const result = await chrome.storage.local.get(STORAGE_KEYS.SPACES);
   const spaces = result[STORAGE_KEYS.SPACES] as Space[] | undefined;
   const normalized = normalizeSpaces(spaces);
+  if (!Array.isArray(spaces) || !spaces.some(space => space.id === DEFAULT_SPACE_ID)) {
+    await saveSpaces(normalized);
+  }
   return normalized.length ? normalized : [DEFAULT_SPACE];
 }
 
@@ -228,7 +231,7 @@ export class StateManager {
    */
   setSpaces(spaces: Space[]): void {
     this.spaces = normalizeSpaces(spaces);
-    this.scheduleSave();
+    this.scheduleSave({ immediate: true });
     this.notifyListeners();
   }
 
@@ -237,7 +240,7 @@ export class StateManager {
    */
   setSettings(settings: UserSettings): void {
     this.settings = settings;
-    this.scheduleSave();
+    this.scheduleSave({ immediate: true });
     this.notifyListeners();
   }
 
@@ -264,7 +267,7 @@ export class StateManager {
       lastAccessedAt: Date.now(),
     };
     this.spaces.push(space);
-    this.scheduleSave();
+    this.scheduleSave({ immediate: true });
     this.notifyListeners();
     return space;
   }
@@ -301,7 +304,7 @@ export class StateManager {
       }
     }
 
-    this.scheduleSave();
+    this.scheduleSave({ immediate: true });
     this.notifyListeners();
   }
 
@@ -322,7 +325,7 @@ export class StateManager {
     const space = this.spaces.find(s => s.id === spaceId);
     if (space) {
       Object.assign(space, updates);
-      this.scheduleSave();
+      this.scheduleSave({ immediate: true });
       this.notifyListeners();
     }
   }
@@ -349,7 +352,7 @@ export class StateManager {
     }
 
     this.tabMetadata[tabId] = { ...this.tabMetadata[tabId], spaceId: targetSpaceId };
-    this.scheduleSave();
+    this.scheduleSave({ immediate: true });
     this.notifyListeners();
     return targetSpaceId;
   }
@@ -415,9 +418,18 @@ export class StateManager {
   /**
    * Schedule a debounced save to storage
    */
-  private scheduleSave(): void {
+  private scheduleSave(options: { immediate?: boolean } = {}): void {
     if (this.saveDebounceTimer) {
       clearTimeout(this.saveDebounceTimer);
+    }
+
+    if (options.immediate) {
+      void savePersistedState({
+        spaces: this.spaces,
+        settings: this.settings,
+        tabMetadata: this.tabMetadata,
+      });
+      return;
     }
 
     this.saveDebounceTimer = setTimeout(async () => {

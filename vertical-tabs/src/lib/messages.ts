@@ -27,7 +27,7 @@ export type UIMessage =
   | {
     type: 'UPDATE_SPACE';
     spaceId: string;
-    updates: { name?: string; color?: string; icon?: string; lastAccessedAt?: number };
+    updates: { name?: string; color?: string; icon?: string; rules?: Space['rules']; lastAccessedAt?: number };
   };
 
 // ============================================
