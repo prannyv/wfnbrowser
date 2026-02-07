@@ -38,8 +38,25 @@ const Tab = memo(function Tab({ tab, isActive, onClick, onClose, onContextMenu }
     }
   }, [tab.favIconUrl, imgError, imgLoaded]);
 
-  // Show loading spinner when: we have a URL, no error, and not yet loaded
+   // Show loading spinner when: we have a URL, no error, and not yet loaded
   const showSpinner = tab.favIconUrl && !imgError && !imgLoaded;
+
+  // --- Inactivity fade logic (ADD THIS HERE) ---
+  const now = Date.now();
+  const lastActiveAt = tab.lastActiveAt ?? now;
+
+  const ageMs = now - lastActiveAt;
+  const ageHours = ageMs / (1000 * 60 * 60);
+
+  let inactivityOpacity = 1;
+
+  if (ageHours > 72) {
+    inactivityOpacity = 0.55;
+  } else if (ageHours > 24) {
+    inactivityOpacity = 0.7;
+  } else if (ageHours > 6) {
+    inactivityOpacity = 0.85;
+  }
 
   // Handle middle-click to close tab
   const handleMouseDown = (e: React.MouseEvent) => {
@@ -98,7 +115,13 @@ const Tab = memo(function Tab({ tab, isActive, onClick, onClose, onContextMenu }
       </div>
 
       {/* Title */}
-      <span className="tab-title">
+      <span
+        className="tab-title"
+        style={{
+          opacity: isActive ? 1 : inactivityOpacity,
+          transition: 'opacity 0.2s ease',
+        }}
+      >
         {tab.title || 'New Tab'}
       </span>
 
@@ -313,7 +336,8 @@ const Tab = memo(function Tab({ tab, isActive, onClick, onClose, onContextMenu }
     prevProps.tab.id === nextProps.tab.id &&
     prevProps.tab.title === nextProps.tab.title &&
     prevProps.tab.favIconUrl === nextProps.tab.favIconUrl &&
-    prevProps.tab.pinned === nextProps.tab.pinned
+    prevProps.tab.pinned === nextProps.tab.pinned &&
+    prevProps.tab.lastActiveAt === nextProps.tab.lastActiveAt
   );
 });
 

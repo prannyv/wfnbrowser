@@ -1,6 +1,7 @@
 // Tab with our custom metadata
 export interface ExtendedTab extends chrome.tabs.Tab {
   lastActiveAt?: number;
+  createdAt?: number;
   spaceId?: string;
 }
 
@@ -62,5 +63,5 @@ export interface UserSettings {
 export interface PersistedState {
   spaces: Space[];
   settings: UserSettings;
-  tabMetadata: Record<number, { spaceId?: string; lastActiveAt?: number }>;
+  tabMetadata: Record<number, { spaceId?: string; lastActiveAt?: number; createdAt?: number; }>;
 }
