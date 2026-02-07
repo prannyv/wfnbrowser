@@ -275,13 +275,15 @@ export class StateManager {
   /**
    * Remove space
    */
-  removeSpace(spaceId: string): void {
+  removeSpace(spaceId: string): number[] {
     // Don't remove the default space
-    if (spaceId === DEFAULT_SPACE_ID) return;
+    if (spaceId === DEFAULT_SPACE_ID) return [];
 
     const defaultSpace = this.spaces.find(space => space.id === DEFAULT_SPACE_ID);
     const spaceToRemove = this.spaces.find(space => space.id === spaceId);
-    if (!spaceToRemove || !defaultSpace) return;
+    if (!spaceToRemove || !defaultSpace) return [];
+
+    const movedTabIds = new Set<number>();
 
     this.spaces = this.spaces.filter(s => s.id !== spaceId);
 
@@ -291,6 +293,7 @@ export class StateManager {
         defaultSpace.tabIds.push(tabId);
       }
       this.tabMetadata[tabId] = { ...this.tabMetadata[tabId], spaceId: DEFAULT_SPACE_ID };
+      movedTabIds.add(tabId);
     }
 
     // Also migrate any metadata that referenced the deleted space
@@ -301,11 +304,15 @@ export class StateManager {
         if (!defaultSpace.tabIds.includes(parsed)) {
           defaultSpace.tabIds.push(parsed);
         }
+        if (!Number.isNaN(parsed)) {
+          movedTabIds.add(parsed);
+        }
       }
     }
 
     this.scheduleSave({ immediate: true });
     this.notifyListeners();
+    return Array.from(movedTabIds);
   }
 
   /**

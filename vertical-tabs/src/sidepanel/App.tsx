@@ -329,17 +329,6 @@ export default function App() {
     }
   }, []);
 
-  const handleSpaceSelect = useCallback((spaceId: string) => {
-    setActiveSpaceId(spaceId);
-    if (spaceId !== ALL_TABS_ID) {
-      sendMessage({
-        type: 'UPDATE_SPACE',
-        spaceId,
-        updates: { lastAccessedAt: Date.now() },
-      }).catch(console.error);
-    }
-  }, []);
-
   const openCreateSpaceModal = useCallback(() => {
     setSpaceForm({ name: '', color: '#4a9eff', icon: '' });
     setSpaceModal({ mode: 'create' });
@@ -351,6 +340,22 @@ export default function App() {
     setSpaceForm({ name: space.name, color: space.color, icon: space.icon ?? '' });
     setSpaceModal({ mode: 'edit', spaceId });
   }, [spaces]);
+
+  const handleSpaceSelect = useCallback((spaceId: string) => {
+    setActiveSpaceId(spaceId);
+    if (spaceId !== ALL_TABS_ID) {
+      sendMessage({
+        type: 'UPDATE_SPACE',
+        spaceId,
+        updates: { lastAccessedAt: Date.now() },
+      }).catch(console.error);
+    }
+  }, []);
+
+  const handleSpaceContextMenu = useCallback((spaceId: string) => (e: React.MouseEvent) => {
+    e.preventDefault();
+    openEditSpaceModal(spaceId);
+  }, [openEditSpaceModal]);
 
   const handleSpaceSave = useCallback(async () => {
     if (!spaceForm.name.trim()) return;
@@ -589,6 +594,7 @@ export default function App() {
                     handleSpaceSelect(space.id);
                   }
                 }}
+                onContextMenu={handleSpaceContextMenu(space.id)}
                 onDragOver={handleSpaceDragOver(space.id)}
                 onDrop={handleSpaceDrop(space.id)}
                 onDragLeave={handleSpaceDragLeave(space.id)}
@@ -686,7 +692,7 @@ export default function App() {
           msUserSelect: 'none',
         }}
       >
-        <div style={{ padding: '8px', minHeight: '100%', display: 'flex', flexDirection: 'column', boxSizing: 'border-box' }}>
+        <div style={{ minHeight: '100%', display: 'flex', flexDirection: 'column', boxSizing: 'border-box' }}>
           {/*Pinned tabs*/}
           {pinnedTabs.length > 0 && (
             <div
@@ -710,7 +716,7 @@ export default function App() {
                 flexDirection: 'row',
                 flexWrap: 'wrap',
                 gap: '4px',
-                padding: '4px 12px',
+                padding: '4px 8px',
                 justifyContent: 'flex-start',
                 alignItems: 'flex-end',
                 backgroundColor: isDragOverPinned ? 'rgba(59, 130, 246, 0.1)' : undefined,
@@ -757,6 +763,7 @@ export default function App() {
               backgroundColor: isDragOverRegular ? 'rgba(59, 130, 246, 0.1)' : undefined,
               border: isDragOverRegular ? '2px solid rgba(59, 130, 246, 0.5)' : '2px solid transparent',
               borderRadius: '10px',
+              padding: '0 8px 8px',
             }}
             onDragOver={handleDragOverRegular}
             onDragLeave={handleDragLeaveRegular}
@@ -767,6 +774,7 @@ export default function App() {
                 key={tab.id}
                 tab={tab}
                 isActive={tab.id === activeTabId}
+                fullWidth
                 onClick={() => handleTabClick(tab)}
                 onClose={(e) => tab.id && handleCloseTab(e, tab.id)}
                 onContextMenu={(e) => handleContextMenu(e, tab)}

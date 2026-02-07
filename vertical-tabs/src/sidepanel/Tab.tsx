@@ -7,6 +7,7 @@ interface TabProps {
   tab: ExtendedTab;
   isActive: boolean;
   variant?: TabVariant;
+  fullWidth?: boolean;
   onClick: () => void;
   onClose: (event: React.MouseEvent) => void;
   onContextMenu?: (event: React.MouseEvent) => void;
@@ -26,6 +27,7 @@ export default function Tab({
   tab,
   isActive,
   variant = 'default',
+  fullWidth = false,
   onClick,
   onClose,
   onContextMenu,
@@ -34,6 +36,7 @@ export default function Tab({
 }: TabProps) {
   const styles = variantStyles[variant];
   const showTitle = variant === 'default' || variant === 'single' || variant === 'elongated' || variant === 'compact';
+  const width = fullWidth ? '100%' : styles.width;
 
   return (
     <div
@@ -54,7 +57,7 @@ export default function Tab({
         display: 'flex',
         alignItems: 'center',
         gap: '8px',
-        width: styles.width,
+        width,
         height: styles.height,
         padding: '6px 8px',
         borderRadius: '10px',

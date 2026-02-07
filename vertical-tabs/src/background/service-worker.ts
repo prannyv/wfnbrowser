@@ -298,7 +298,17 @@ async function handleMessage(
       }
 
       case 'DELETE_SPACE': {
-        stateManager.removeSpace(message.spaceId);
+        const movedTabIds = stateManager.removeSpace(message.spaceId);
+        for (const tabId of movedTabIds) {
+          tabEngine.updateTabMetadata(tabId, { spaceId: DEFAULT_SPACE_ID });
+          const updatedTab = tabEngine.getTab(tabId);
+          if (updatedTab) {
+            broadcastMessage({
+              type: 'TAB_UPDATED',
+              tab: { ...updatedTab, spaceId: DEFAULT_SPACE_ID },
+            });
+          }
+        }
         sendResponse({ success: true });
         break;
       }
