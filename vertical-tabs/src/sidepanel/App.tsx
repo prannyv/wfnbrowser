@@ -571,7 +571,7 @@ export default function App() {
             style={{
               padding: '6px 10px',
               borderRadius: '999px',
-              border: activeSpaceId === ALL_TABS_ID ? '1px solid #4a9eff' : '1px solid #333',
+              border: activeSpaceId === ALL_TABS_ID ? '1px solid white' : '1px solid #333',
               background: activeSpaceId === ALL_TABS_ID ? '#1f2937' : '#111',
               color: '#e5e5e5',
               fontSize: '12px',
@@ -583,7 +583,11 @@ export default function App() {
           </button>
 
           {spaces.map(space => (
-            <div key={space.id} style={{ display: 'flex', alignItems: 'center', gap: '4px' }}>
+            <div
+              key={space.id}
+              onContextMenu={handleSpaceContextMenu(space.id)}
+              style={{ display: 'flex', alignItems: 'center', gap: '4px' }}
+            >
               <div
                 role="button"
                 tabIndex={0}
@@ -601,7 +605,7 @@ export default function App() {
                 style={{
                   padding: '6px 10px',
                   borderRadius: '999px',
-                  border: activeSpaceId === space.id ? '1px solid #4a9eff' : '1px solid transparent',
+                  border: activeSpaceId === space.id ? '1px solid white' : '1px solid transparent',
                   background: dragOverSpaceId === space.id ? 'rgba(59, 130, 246, 0.2)' : space.color,
                   color: '#fff',
                   fontSize: '12px',
@@ -616,24 +620,6 @@ export default function App() {
                 {space.icon && <span>{space.icon}</span>}
                 <span>{space.name}</span>
               </div>
-              <button
-                type="button"
-                onClick={() => openEditSpaceModal(space.id)}
-                style={{
-                  height: '24px',
-                  padding: '0 8px',
-                  borderRadius: '8px',
-                  border: '1px solid #333',
-                  background: '#151515',
-                  color: '#aaa',
-                  fontSize: '12px',
-                  cursor: 'pointer',
-                }}
-                aria-label={`Edit ${space.name}`}
-                title="Edit space"
-              >
-                Edit
-              </button>
             </div>
           ))}
 
