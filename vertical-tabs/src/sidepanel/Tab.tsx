@@ -12,7 +12,6 @@ interface TabProps {
 }
 
 // Memoized Tab component - only re-renders when props actually change
-// Memoized Tab component - only re-renders when props actually change
 const Tab = memo(function Tab({
   tab,
   isActive,
@@ -21,10 +20,7 @@ const Tab = memo(function Tab({
   onContextMenu,
   onDragStart,
   onDragEnd,
-  variant = 'default',
-}: TabProps & {
-  variant?: 'default' | 'compact' | 'minimal' | 'elongated' | 'single';
-}) {
+}: TabProps) {
   // Track image error and loading state
   const [imgError, setImgError] = useState(false);
   const [imgLoaded, setImgLoaded] = useState(false);
@@ -55,7 +51,7 @@ const Tab = memo(function Tab({
    // Show loading spinner when: we have a URL, no error, and not yet loaded
   const showSpinner = tab.favIconUrl && !imgError && !imgLoaded;
 
-  // --- Inactivity fade logic (ADD THIS HERE) ---
+  // --- Inactivity fade logic ---
   const now = Date.now();
   const lastActiveAt = tab.lastActiveAt ?? now;
 
@@ -82,15 +78,12 @@ const Tab = memo(function Tab({
     }
   };
 
-  const isCompact = variant === 'compact';
-  const isMinimal = variant === 'minimal';
-  const isElongated = variant === 'elongated';
-  const isSingle = variant === 'single';
-  const isDefault = variant === 'default';
+  const isPinned = !!tab.pinned;
+  const iconSize = isPinned ? '20px' : '32px';
 
   return (
     <div
-      className={`tab-item ${isCompact ? 'tab-item-compact' : ''} ${isMinimal ? 'tab-item-minimal' : ''} ${isElongated ? 'tab-item-elongated' : ''} ${isSingle ? 'tab-item-single' : ''}`}
+      className={isPinned ? 'tab-item tab-item-pinned' : 'tab-item'}
       data-active={isActive}
       onClick={onClick}
       onContextMenu={onContextMenu}
@@ -122,8 +115,8 @@ const Tab = memo(function Tab({
               }}
               style={{
                 display: imgLoaded ? 'block' : 'none',
-                width: (isDefault) ? '32px' : '20px',
-                height: (isDefault) ? '32px' : '20px',
+                width: iconSize,
+                height: iconSize,
                 objectFit: 'contain',
               }}
             />
@@ -137,19 +130,21 @@ const Tab = memo(function Tab({
         )}
       </div>
 
-      {/* Title */}
-      <span
-        className="tab-title"
-        style={{
-          opacity: isActive ? 1 : inactivityOpacity,
-          transition: 'opacity 0.2s ease',
-        }}
-      >
-        {tab.title || 'New Tab'}
-      </span>
+      {/* Title - only for regular tabs */}
+      {!isPinned && (
+        <span
+          className="tab-title"
+          style={{
+            opacity: isActive ? 1 : inactivityOpacity,
+            transition: 'opacity 0.2s ease',
+          }}
+        >
+          {tab.title || 'New Tab'}
+        </span>
+      )}
 
-      {/* Close button - Only show if default */}
-      {isDefault && (
+      {/* Close button - only for regular tabs */}
+      {!isPinned && (
         <button
           className="tab-close"
           onClick={onClose}
@@ -181,62 +176,18 @@ const Tab = memo(function Tab({
           user-select: none;
         }
 
-        .tab-item-compact {
+        .tab-item-pinned {
           display: flex;
-          flex-direction: row;
-          flex-wrap: wrap;  
-          min-width: 0;
-          background-color: rgba(48, 49, 50, 0.4);
-          padding: 8px;
-          gap: 1px;
-          margin-bottom: 0;
+          align-items: center;
           justify-content: center;
-          width: calc(33.33% - 3px);
-          height: 36px;
-        }
-
-        .tab-item-minimal {
-          display: flex;
-          flex-direction: column;
-          flex-wrap: wrap;  
-          min-width: 0;
           background-color: rgba(48, 49, 50, 0.4);
-          padding: 8px;
+          padding: 0;
           gap: 0;
           margin-bottom: 0;
-          justify-content: center;
-          width: calc(50% - 2px);
-          height: 36px;
+          height: 38px;
+          border-left: none;
         }
-        
-        .tab-item-elongated {
-          display: flex;
-          flex-direction: row;
-          flex-wrap: wrap;  
-          width: calc(50% - 2px);
-          height: 56px;
-          background-color: rgba(48, 49, 50, 0.4);
-          padding: 8px;
-          gap: 12px;
-          margin-bottom: 0;
-          justify-content: center;
-        }
-        
-        .tab-item-single {
-          display: flex;
-          flex-direction: row;
-          flex-wrap: wrap;  
-          align-items: center;
-          width: 100%;
-          padding: 8px;
-          gap: 12px;
-          margin-bottom: 0;
-          height: 56px;
-          background-color: rgba(48, 49, 50, 0.4);
-          justify-content: center;
-          margin: 0 auto;
-        }
-        
+
         .tab-item * {
           -webkit-touch-callout: none;
           -webkit-user-select: none;
@@ -245,24 +196,22 @@ const Tab = memo(function Tab({
           -ms-user-select: none;
           user-select: none;
         }
-        
+
         .tab-item:hover {
           background-color: rgba(55, 65, 81, 0.4);
         }
-        
+
         .tab-item[data-active="true"] {
           background-color: rgba(55, 65, 81, 0.5);
           border-left-color: #233955ff;
         }
 
-        .tab-item-compact[data-active="true"],
-        .tab-item-minimal[data-active="true"],
-        .tab-item-elongated[data-active="true"],
-        .tab-item-single[data-active="true"] {
+        .tab-item-pinned[data-active="true"] {
+          background-color: rgba(55, 65, 81, 0.5);
           border-left: none;
-          border-bottom: 2px solid #233955ff; 
+          border-bottom: 2px solid #233955ff;
         }
-        
+
         .tab-icon {
           width: 32px;
           height: 32px;
@@ -279,14 +228,11 @@ const Tab = memo(function Tab({
           user-select: none;
         }
 
-        .tab-item-compact .tab-icon,
-        .tab-item-minimal .tab-icon,
-        .tab-item-elongated .tab-icon,
-        .tab-item-single .tab-icon {
+        .tab-item-pinned .tab-icon {
           width: 20px;
           height: 20px;
         }
-        
+
         .tab-icon img {
           width: 32px;
           height: 32px;
@@ -299,14 +245,11 @@ const Tab = memo(function Tab({
           user-select: none;
         }
 
-        .tab-item-compact .tab-icon img,
-        .tab-item-minimal .tab-icon img,
-        .tab-item-elongated .tab-icon img,
-        .tab-item-single .tab-icon img {
+        .tab-item-pinned .tab-icon img {
           width: 20px;
           height: 20px;
         }
-        
+
         .tab-icon-fallback {
           width: 32px;
           height: 32px;
@@ -323,14 +266,11 @@ const Tab = memo(function Tab({
           user-select: none;
         }
 
-        .tab-item-compact .tab-icon-fallback,
-        .tab-item-minimal .tab-icon-fallback,
-        .tab-item-elongated .tab-icon-fallback,
-        .tab-item-single .tab-icon-fallback {
-            width: 20px;
-            height: 20px;
+        .tab-item-pinned .tab-icon-fallback {
+          width: 20px;
+          height: 20px;
         }
-        
+
         .tab-icon-fallback svg {
           width: 20px;
           height: 20px;
@@ -343,14 +283,11 @@ const Tab = memo(function Tab({
           user-select: none;
         }
 
-        .tab-item-compact .tab-icon-fallback svg,
-        .tab-item-minimal .tab-icon-fallback svg,
-        .tab-item-elongated .tab-icon-fallback svg,
-        .tab-item-single .tab-icon-fallback svg {
-            width: 14px;
-            height: 14px;
+        .tab-item-pinned .tab-icon-fallback svg {
+          width: 14px;
+          height: 14px;
         }
-        
+
         .tab-icon-loader {
           position: absolute;
           width: 32px;
@@ -360,14 +297,11 @@ const Tab = memo(function Tab({
           justify-content: center;
         }
 
-        .tab-item-compact .tab-icon-loader,
-        .tab-item-minimal .tab-icon-loader,
-        .tab-item-elongated .tab-icon-loader,
-        .tab-item-single .tab-icon-loader {
-            width: 20px;
-            height: 20px;
+        .tab-item-pinned .tab-icon-loader {
+          width: 20px;
+          height: 20px;
         }
-        
+
         .loader {
           width: 32px;
           height: 32px;
@@ -376,15 +310,12 @@ const Tab = memo(function Tab({
           animation: rotate 1s linear infinite;
         }
 
-        .tab-item-compact .loader,
-        .tab-item-minimal .loader,
-        .tab-item-elongated .loader,
-        .tab-item-single .loader {
-            width: 20px;
-            height: 20px;
-            border-width: 2px;
+        .tab-item-pinned .loader {
+          width: 20px;
+          height: 20px;
+          border-width: 2px;
         }
-        
+
         .loader::before {
           content: "";
           box-sizing: border-box;
@@ -395,17 +326,14 @@ const Tab = memo(function Tab({
           animation: prixClipFix 2s linear infinite;
         }
 
-        .tab-item-compact .loader::before,
-        .tab-item-minimal .loader::before,
-        .tab-item-elongated .loader::before,
-        .tab-item-single .loader::before {
-            border-width: 2px;
+        .tab-item-pinned .loader::before {
+          border-width: 2px;
         }
-        
+
         @keyframes rotate {
           100% { transform: rotate(360deg); }
         }
-        
+
         @keyframes prixClipFix {
           0%   { clip-path: polygon(50% 50%, 0 0, 0 0, 0 0, 0 0, 0 0); }
           25%  { clip-path: polygon(50% 50%, 0 0, 100% 0, 100% 0, 100% 0, 100% 0); }
@@ -413,7 +341,7 @@ const Tab = memo(function Tab({
           75%  { clip-path: polygon(50% 50%, 0 0, 100% 0, 100% 100%, 0 100%, 0 100%); }
           100% { clip-path: polygon(50% 50%, 0 0, 100% 0, 100% 100%, 0 100%, 0 0); }
         }
-        
+
         .tab-title {
           flex: 1;
           overflow: hidden;
@@ -430,7 +358,7 @@ const Tab = memo(function Tab({
           -ms-user-select: none;
           user-select: none;
         }
-        
+
         .tab-close {
           padding: 4px;
           border-radius: 4px;
@@ -451,16 +379,16 @@ const Tab = memo(function Tab({
           -ms-user-select: none;
           user-select: none;
         }
-        
+
         .tab-item:hover .tab-close {
           opacity: 1;
         }
-        
+
         .tab-close:hover {
           background-color: rgba(239, 68, 68, 0.2);
           color: #f87171;
         }
-        
+
         .tab-close svg {
           width: 16px;
           height: 16px;

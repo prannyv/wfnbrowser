@@ -376,7 +376,7 @@ export default function App() {
 
 
   // Memoize filtered and separated tabs - only recompute when deps change
-  const { pinnedTabs, regularTabs, filteredCount, pinnedTabVariant } = useMemo(() => {
+  const { pinnedTabs, regularTabs, filteredCount, pinnedGridCols } = useMemo(() => {
     const query = searchQuery.toLowerCase();
     const filtered = searchQuery
       ? tabs.filter(tab =>
@@ -398,25 +398,14 @@ export default function App() {
       }
     }
 
-    // Determine variant based on count
-    let variant = 'single';
-    if (pinned.length > 4) {
-      // 5-6 tabs: Compact (Rectangles, 96px wide)
-      variant = 'compact';
-    } else if (pinned.length > 2) {
-      // 3-4 tabs: Minimal (Squares, 48px wide)
-      variant = 'minimal';
-    } else if (pinned.length === 2) {
-      // 2 tabs: Elongated
-      variant = 'elongated';
-    }
-    // 1 tab: Single (Default)
+    // Grid columns: grow horizontally first (1 → 2 → 3), then wrap to rows
+    const cols = Math.min(pinned.length, 3);
 
     return {
       pinnedTabs: pinned,
       regularTabs: regular,
       filteredCount: filtered.length,
-      pinnedTabVariant: variant
+      pinnedGridCols: cols,
     };
   }, [tabs, searchQuery]);
 
@@ -493,26 +482,22 @@ export default function App() {
                 Pinned Tabs
               </div>
               <div style={{
-                display: 'flex',
-                flexDirection: 'row',
-                flexWrap: 'wrap',
-                gap: '4px',
-                padding: '4px 12px',
-                justifyContent: 'flex-start',
-                alignItems: 'flex-end',
+                display: 'grid',
+                gridTemplateColumns: `repeat(${pinnedGridCols}, 1fr)`,
+                gap: '8px 14px',
+                padding: '4px 8px',
+                width: '95%',
+                margin: '0 auto',
                 backgroundColor: isDragOverPinned ? 'rgba(59, 130, 246, 0.1)' : undefined,
                 border: isDragOverPinned ? '2px solid rgba(59, 130, 246, 0.5)' : '2px solid transparent',
                 borderRadius: '8px',
                 transition: 'all 0.2s ease',
-                minHeight: '56px',
-                width: '100%',
               }}>
                 {pinnedTabs.map((tab) => (
                   <Tab
                     key={tab.id}
                     tab={tab}
                     isActive={tab.id === activeTabId}
-                    variant={pinnedTabVariant as 'default' | 'compact' | 'minimal' | 'elongated' | 'single'}
                     onClick={() => handleTabClick(tab)}
                     onClose={(e) => tab.id && handleCloseTab(e, tab.id)}
                     onContextMenu={(e) => handleContextMenu(e, tab)}
