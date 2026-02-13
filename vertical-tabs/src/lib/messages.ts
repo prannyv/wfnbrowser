@@ -1,4 +1,4 @@
-import type { ExtendedTab, SerializedTabState, Space, AppState } from '@/types';
+import type { ExtendedTab, SerializedTabState, Space } from '@/types';
 
 // ============================================
 // Messages from UI to Service Worker
@@ -74,7 +74,7 @@ export function onMessage(
 // Type guard for background messages
 function isBackgroundMessage(message: Message): message is BackgroundMessage {
   const bgTypes = [
-    'STATE_SYNC', 'TAB_CREATED', 'TAB_REMOVED', 'TAB_UPDATED', 
+    'STATE_SYNC', 'TAB_CREATED', 'TAB_REMOVED', 'TAB_UPDATED',
     'TAB_MOVED', 'TAB_ACTIVATED', 'WINDOW_CREATED', 'WINDOW_REMOVED',
     'WINDOW_FOCUSED', 'SPACES_UPDATED', 'SIDE_PANEL_CLOSING'
   ];

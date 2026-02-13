@@ -45,10 +45,10 @@ function updateLastActive(tabId: number): void {
 
 async function initialize(): Promise<void> {
   console.log('[ServiceWorker] Initializing...');
-  
+
   // Initialize state manager first (loads persisted state)
   await stateManager.initialize();
-  
+
   // Initialize tab engine (syncs with Chrome)
   await tabEngine.initialize();
 
@@ -70,7 +70,7 @@ async function initialize(): Promise<void> {
       tabEngine.updateTabMetadata(tabId, data);
     }
   }
-  
+
   // Clean up metadata when tabs are removed (regardless of how they were closed)
   chrome.tabs.onRemoved.addListener((tabId) => {
     stateManager.removeTabMetadata(tabId);
@@ -108,7 +108,7 @@ async function initialize(): Promise<void> {
       spaces: stateManager.getSpaces(),
     });
   });
-  
+
   console.log('[ServiceWorker] Initialized');
 }
 
@@ -127,7 +127,7 @@ async function toggleSidePanel(windowId: number): Promise<void> {
   const currentState = sidePanelToggleState.get(windowId) || false;
   const newState = !currentState;
   sidePanelToggleState.set(windowId, newState);
-  
+
   if (newState) {
     await chrome.sidePanel.open({ windowId });
   } else {
@@ -179,16 +179,16 @@ chrome.commands.onCommand.addListener(async (command) => {
 chrome.runtime.onMessage.addListener(
   (message: UIMessage, _sender, sendResponse) => {
     console.log('[ServiceWorker] Message received:', message.type);
-    
+
     handleMessage(message, sendResponse);
-    
+
     // Return true to keep channel open for async responses
     return true;
   }
 );
 
 async function handleMessage(
-  message: UIMessage, 
+  message: UIMessage,
   sendResponse: (response: unknown) => void
 ): Promise<void> {
   try {
@@ -200,11 +200,11 @@ async function handleMessage(
         sendResponse({ state, spaces });
         break;
       }
-      
+
       case 'GET_TABS': {
         const windowId = message.windowId;
         let tabs: ExtendedTab[];
-        
+
         if (windowId !== undefined) {
           tabs = tabEngine.getTabsForWindow(windowId);
         } else {
@@ -216,7 +216,7 @@ async function handleMessage(
             tabs = tabEngine.getAllTabs();
           }
         }
-        
+
         // Enrich with metadata
         const metadata = stateManager.getTabMetadata();
         tabs = tabs.map(tab => ({
@@ -224,11 +224,11 @@ async function handleMessage(
           spaceId: tab.id ? metadata[tab.id]?.spaceId : undefined,
           lastActiveAt: tab.id ? metadata[tab.id]?.lastActiveAt : undefined,
         }));
-        
+
         sendResponse(tabs);
         break;
       }
-      
+
       case 'SUBSCRIBE': {
         // Send current state immediately
         const state = tabEngine.getSerializedState();
@@ -237,12 +237,12 @@ async function handleMessage(
         sendResponse({ success: true });
         break;
       }
-      
+
       case 'UNSUBSCRIBE': {
         sendResponse({ success: true });
         break;
       }
-      
+
       // ========== Tab Actions ==========
       case 'SWITCH_TAB': {
         await chrome.tabs.update(message.tabId, { active: true });
@@ -250,14 +250,14 @@ async function handleMessage(
         sendResponse({ success: true });
         break;
       }
-      
+
       case 'CLOSE_TAB': {
         await chrome.tabs.remove(message.tabId);
         stateManager.removeTabMetadata(message.tabId);
         sendResponse({ success: true });
         break;
       }
-      
+
       case 'CLOSE_TABS': {
         await chrome.tabs.remove(message.tabIds);
         for (const tabId of message.tabIds) {
@@ -266,50 +266,61 @@ async function handleMessage(
         sendResponse({ success: true });
         break;
       }
-      
+
       case 'PIN_TAB': {
+        // If pinning, check the limit first
+        if (message.pinned) {
+          const allTabs = await chrome.tabs.query({});
+          const pinnedCount = allTabs.filter(t => t.pinned).length;
+
+          if (pinnedCount >= 6) {
+            sendResponse({ success: false, error: 'Maximum 6 pinned tabs allowed' });
+            break;
+          }
+        }
+
         await chrome.tabs.update(message.tabId, { pinned: message.pinned });
         sendResponse({ success: true });
         break;
       }
-      
+
       case 'CREATE_TAB': {
         const options: chrome.tabs.CreateProperties = {};
         if (message.url) options.url = message.url;
         if (message.windowId) options.windowId = message.windowId;
-        
+
         const tab = await chrome.tabs.create(options);
         sendResponse({ success: true, tabId: tab.id });
         break;
       }
-      
+
       case 'MOVE_TAB': {
         const moveOptions: chrome.tabs.MoveProperties = { index: message.index };
         if (message.windowId) moveOptions.windowId = message.windowId;
-        
+
         await chrome.tabs.move(message.tabId, moveOptions);
         sendResponse({ success: true });
         break;
       }
-      
+
       case 'RELOAD_TAB': {
         await chrome.tabs.reload(message.tabId);
         sendResponse({ success: true });
         break;
       }
-      
+
       case 'DUPLICATE_TAB': {
         const newTab = await chrome.tabs.duplicate(message.tabId);
         sendResponse({ success: true, tabId: newTab?.id });
         break;
       }
-      
+
       case 'MUTE_TAB': {
         await chrome.tabs.update(message.tabId, { muted: message.muted });
         sendResponse({ success: true });
         break;
       }
-      
+
       // ========== Space Actions ==========
       case 'ASSIGN_TAB_TO_SPACE': {
         stateManager.assignTabToSpace(message.tabId, message.spaceId);
@@ -317,25 +328,25 @@ async function handleMessage(
         sendResponse({ success: true });
         break;
       }
-      
+
       case 'CREATE_SPACE': {
         const space = stateManager.addSpace(message.name, message.color);
         sendResponse({ success: true, space });
         break;
       }
-      
+
       case 'DELETE_SPACE': {
         stateManager.removeSpace(message.spaceId);
         sendResponse({ success: true });
         break;
       }
-      
+
       case 'RENAME_SPACE': {
         stateManager.renameSpace(message.spaceId, message.name);
         sendResponse({ success: true });
         break;
       }
-      
+
       default: {
         console.warn('[ServiceWorker] Unknown message type:', (message as { type: string }).type);
         sendResponse({ error: 'Unknown message type' });
@@ -352,7 +363,7 @@ async function handleMessage(
 // ============================================
 chrome.runtime.onInstalled.addListener((details) => {
   console.log('[ServiceWorker] Extension installed/updated:', details.reason);
-  
+
   if (details.reason === 'install') {
     console.log('[ServiceWorker] First install - welcome!');
   }
