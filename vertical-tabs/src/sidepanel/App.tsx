@@ -535,6 +535,12 @@ export default function App() {
     };
   }, [tabs, searchQuery, activeSpaceId]);
 
+  const isTabListMinimized = useMemo(() => {
+    if (!draggedTab || !dragOverSpaceId) return false;
+    const tabSpaceId = tabs.find(t => t.id === draggedTab)?.spaceId ?? DEFAULT_SPACE_ID;
+    return dragOverSpaceId !== tabSpaceId;
+  }, [draggedTab, dragOverSpaceId, tabs]);
+
   if (isLoading) {
     return (
       <div style={{
@@ -668,14 +674,17 @@ export default function App() {
       <div
         ref={scrollContainerRef}
         style={{
-          flex: 1,
-          overflowY: 'auto',
+          flex: isTabListMinimized ? 0 : 1,
+          maxHeight: isTabListMinimized ? 0 : undefined,
+          overflow: isTabListMinimized ? 'hidden' : undefined,
+          overflowY: isTabListMinimized ? undefined : 'auto',
           overflowX: 'hidden',
           minHeight: 0,
           userSelect: 'none',
           WebkitUserSelect: 'none',
           MozUserSelect: 'none',
           msUserSelect: 'none',
+          transition: 'flex 0.2s ease, max-height 0.2s ease',
         }}
       >
         <div style={{ minHeight: '100%', display: 'flex', flexDirection: 'column', boxSizing: 'border-box' }}>

@@ -15,14 +15,6 @@ interface TabProps {
   onDragEnd?: (event: React.DragEvent) => void;
 }
 
-const variantStyles: Record<TabVariant, { width: string; height: string }> = {
-  single: { width: '140px', height: '36px' },
-  elongated: { width: '120px', height: '32px' },
-  minimal: { width: '48px', height: '32px' },
-  compact: { width: '96px', height: '32px' },
-  default: { width: '200px', height: '38px' },
-};
-
 export default function Tab({
   tab,
   isActive,
@@ -34,16 +26,40 @@ export default function Tab({
   onDragStart,
   onDragEnd,
 }: TabProps) {
-  const styles = variantStyles[variant];
-  const showTitle = variant === 'default' || variant === 'single' || variant === 'elongated' || variant === 'compact';
-  const width = fullWidth ? '100%' : styles.width;
+  const isCompact = variant === 'compact';
+  const isMinimal = variant === 'minimal';
+  const isElongated = variant === 'elongated';
+  const isSingle = variant === 'single';
+  const isDefault = variant === 'default';
+
+  const variantClass =
+    isCompact ? 'tab-item-compact' :
+    isMinimal ? 'tab-item-minimal' :
+    isElongated ? 'tab-item-elongated' :
+    isSingle ? 'tab-item-single' :
+    '';
+
+  const showTitle = isDefault || isElongated || isSingle;
+
+  const classNames = ['tab-item', variantClass].filter(Boolean).join(' ');
+
+  const handleMouseDown = (e: React.MouseEvent) => {
+    if (e.button === 1) {
+      e.preventDefault();
+      e.stopPropagation();
+      onClose(e);
+    }
+  };
 
   return (
     <div
       role="button"
       tabIndex={0}
       draggable
+      className={classNames}
+      data-active={isActive}
       onClick={onClick}
+      onMouseDown={handleMouseDown}
       onContextMenu={onContextMenu}
       onDragStart={onDragStart}
       onDragEnd={onDragEnd}
@@ -53,74 +69,44 @@ export default function Tab({
           onClick();
         }
       }}
-      style={{
-        display: 'flex',
-        alignItems: 'center',
-        gap: '8px',
-        width,
-        height: styles.height,
-        padding: '6px 8px',
-        borderRadius: '10px',
-        background: isActive ? '#1f2937' : '#151515',
-        border: isActive ? '1px solid #4a9eff' : '1px solid #242424',
-        color: '#e5e5e5',
-        cursor: 'pointer',
-        userSelect: 'none',
-      }}
+      style={fullWidth ? { width: '100%' } : undefined}
       title={tab.title ?? tab.url ?? 'Untitled tab'}
     >
-      {tab.favIconUrl ? (
-        <img
-          src={tab.favIconUrl}
-          alt=""
-          style={{ width: '16px', height: '16px', borderRadius: '4px' }}
-        />
-      ) : (
-        <div
-          style={{
-            width: '16px',
-            height: '16px',
-            borderRadius: '4px',
-            background: '#333',
-            display: 'flex',
-            alignItems: 'center',
-            justifyContent: 'center',
-            fontSize: '10px',
-          }}
-        >
-          {tab.title?.charAt(0).toUpperCase() ?? '•'}
-        </div>
-      )}
+      <div className="tab-icon">
+        {tab.favIconUrl ? (
+          <img
+            src={tab.favIconUrl}
+            alt=""
+            onError={(e) => {
+              (e.target as HTMLImageElement).style.display = 'none';
+            }}
+          />
+        ) : (
+          <div className="tab-icon-fallback">
+            {tab.title?.charAt(0).toUpperCase() ?? '•'}
+          </div>
+        )}
+      </div>
 
       {showTitle && (
-        <div
-          style={{
-            flex: 1,
-            fontSize: '12px',
-            overflow: 'hidden',
-            textOverflow: 'ellipsis',
-            whiteSpace: 'nowrap',
-          }}
-        >
+        <div className="tab-title">
           {tab.title ?? tab.url ?? 'Untitled'}
         </div>
       )}
 
-      <button
-        type="button"
-        onClick={onClose}
-        style={{
-          border: 'none',
-          background: 'transparent',
-          color: '#9ca3af',
-          cursor: 'pointer',
-          padding: 0,
-          fontSize: '12px',
-        }}
-        aria-label="Close tab"
-      >
-        ✕
-      </button>
+      {isDefault && (
+        <button
+          type="button"
+          className="tab-close"
+          onClick={(e) => {
+            e.stopPropagation();
+            onClose(e);
+          }}
+          aria-label="Close tab"
+        >
+          ✕
+        </button>
+      )}
     </div>
   );
 }
