@@ -8,6 +8,43 @@ import ContextMenu from './ContextMenu';
 const DEFAULT_SPACE_ID = 'default';
 const ALL_TABS_ID = 'all';
 
+const SPACE_COLORS = [
+  '#FFB3BA', '#FFDFBA', '#FFFFBA', '#BAFFC9', '#BAE1FF',
+  '#E0BBE4', '#957DAD', '#D291BC', '#FEC8D8', '#FFDFD3',
+  '#B5EAD7', '#C7CEEA', '#A8E6CF', '#DCEDC1', '#FFD3B6',
+  '#FFAAA5', '#FF8B94', '#a8dadc', '#457b9d', '#e9c46a',
+  '#2a9d8f', '#e76f51', '#f4a261', '#9b5de5', '#00bbf9',
+];
+
+const BASE_BG = '#1a1a1a';
+
+function isLightColor(hex: string): boolean {
+  const h = hex.replace('#', '');
+  const full = h.length === 3 ? h.split('').map(c => c + c).join('') : h;
+  if (full.length !== 6) return false;
+  const r = parseInt(full.slice(0, 2), 16) / 255;
+  const g = parseInt(full.slice(2, 4), 16) / 255;
+  const b = parseInt(full.slice(4, 6), 16) / 255;
+  const luminance = 0.299 * r + 0.587 * g + 0.114 * b;
+  return luminance > 0.6;
+}
+
+function mutedBgFromSpaceColor(hex: string, alpha = 0.35): string {
+  const h = hex.replace('#', '');
+  const full = h.length === 3 ? h.split('').map(c => c + c).join('') : h;
+  if (full.length !== 6) return BASE_BG;
+  const r1 = parseInt(BASE_BG.slice(1, 3), 16);
+  const g1 = parseInt(BASE_BG.slice(3, 5), 16);
+  const b1 = parseInt(BASE_BG.slice(5, 7), 16);
+  const r2 = parseInt(full.slice(0, 2), 16);
+  const g2 = parseInt(full.slice(2, 4), 16);
+  const b2 = parseInt(full.slice(4, 6), 16);
+  const r = Math.round(r1 * (1 - alpha) + r2 * alpha);
+  const g = Math.round(g1 * (1 - alpha) + g2 * alpha);
+  const b = Math.round(b1 * (1 - alpha) + b2 * alpha);
+  return `rgb(${r}, ${g}, ${b})`;
+}
+
 const SPACE_EMOJIS = [
   '💼','📁','📂','📋','📌','🗂️','📎','📝','✏️','🖊️','🖋️',
   '📊','📈','📉','📅','🗓️','⏰','👥','🤝','📣','🧾',
@@ -43,7 +80,7 @@ export default function App() {
   const [spaceModal, setSpaceModal] = useState<{ mode: 'create' | 'edit'; spaceId?: string } | null>(null);
   const [spaceForm, setSpaceForm] = useState<{ name: string; color: string; icon: string }>({
     name: '',
-    color: '#4a9eff',
+    color: SPACE_COLORS[0],
     icon: '',
   });
   const [errorMessage, setErrorMessage] = useState<{ text: string; x: number; y: number } | null>(null);
@@ -56,6 +93,7 @@ export default function App() {
   const [draggedTab, setDraggedTab] = useState<number | null>(null);
   const [isDragOverRegular, setIsDragOverRegular] = useState(false);
   const [dragOverSpaceId, setDragOverSpaceId] = useState<string | null>(null);
+  const [dragGhostPos, setDragGhostPos] = useState<{ x: number; y: number } | null>(null);
   const [emojiPickerOpen, setEmojiPickerOpen] = useState(false);
   const scrollContainerRef = useRef<HTMLDivElement>(null);
   const autoScrollIntervalRef = useRef<ReturnType<typeof setInterval> | null>(null);
@@ -322,11 +360,16 @@ export default function App() {
   const handleDragStart = useCallback((tab: ExtendedTab) => (e: React.DragEvent) => {
     if (!tab.id) return;
     setDraggedTab(tab.id);
+    setDragGhostPos({ x: e.clientX, y: e.clientY });
     e.dataTransfer.effectAllowed = 'move';
     e.dataTransfer.setData('text/plain', String(tab.id));
 
-    // Start auto-scroll on drag
+    const img = new Image();
+    img.src = 'data:image/gif;base64,R0lGODlhAQABAIAAAAAAAP///yH5BAEAAAAALAAAAAABAAEAAAIBRAA7';
+    e.dataTransfer.setDragImage(img, 0, 0);
+
     const handleDragMove = (event: DragEvent) => {
+      setDragGhostPos({ x: event.clientX, y: event.clientY });
       const container = scrollContainerRef.current;
       if (!container) return;
 
@@ -374,6 +417,7 @@ export default function App() {
 
   const handleDragEnd = useCallback(() => {
     setDraggedTab(null);
+    setDragGhostPos(null);
     setIsDragOverPinned(false);
     setIsDragOverRegular(false);
     setDragOverSpaceId(null);
@@ -386,14 +430,15 @@ export default function App() {
   }, []);
 
   const openCreateSpaceModal = useCallback(() => {
-    setSpaceForm({ name: '', color: '#4a9eff', icon: '' });
+    setSpaceForm({ name: '', color: SPACE_COLORS[0], icon: '' });
     setSpaceModal({ mode: 'create' });
   }, []);
 
   const openEditSpaceModal = useCallback((spaceId: string) => {
     const space = spaces.find(s => s.id === spaceId);
     if (!space) return;
-    setSpaceForm({ name: space.name, color: space.color, icon: space.icon ?? '' });
+    const color = SPACE_COLORS.includes(space.color) ? space.color : SPACE_COLORS[0];
+    setSpaceForm({ name: space.name, color, icon: space.icon ?? '' });
     setSpaceModal({ mode: 'edit', spaceId });
   }, [spaces]);
 
@@ -711,6 +756,9 @@ export default function App() {
 
   const panelPct = spaceIds.length > 0 ? 100 / spaceIds.length : 100;
 
+  const activeSpace = activeSpaceId !== ALL_TABS_ID ? spaces.find(s => s.id === activeSpaceId) : null;
+  const tabListBg = activeSpace ? mutedBgFromSpaceColor(activeSpace.color) : BASE_BG;
+
   return (
     <div
       ref={rootRef}
@@ -744,7 +792,15 @@ export default function App() {
       {/* Tab list - carousel with swipe (Arc-style: one space per gesture) */}
       <div
         ref={carouselOuterRef}
-        style={{ flex: 1, minHeight: 0, overflow: 'hidden', display: 'flex', flexDirection: 'column' }}
+        style={{
+          flex: 1,
+          minHeight: 0,
+          overflow: 'hidden',
+          display: 'flex',
+          flexDirection: 'column',
+          backgroundColor: tabListBg,
+          transition: 'background-color 0.25s ease',
+        }}
       >
         <div
           style={{
@@ -876,6 +932,38 @@ export default function App() {
         </div>
       </div>
 
+      {/* Drag ghost - follows cursor, shrinks & fades when over a space */}
+      {dragGhostPos && draggedTab && (() => {
+        const tab = tabs.find(t => t.id === draggedTab);
+        if (!tab) return null;
+        const overSpace = dragOverSpaceId !== null;
+        return (
+          <div
+            className={`drag-ghost${overSpace ? ' drag-ghost--over-space' : ''}`}
+            style={{
+              position: 'fixed',
+              left: dragGhostPos.x,
+              top: dragGhostPos.y,
+              zIndex: 9999,
+              pointerEvents: 'none',
+            }}
+          >
+            <div className="drag-ghost__inner">
+              <div className="drag-ghost__icon">
+                {tab.favIconUrl ? (
+                  <img src={tab.favIconUrl} alt="" />
+                ) : (
+                  <div className="drag-ghost__icon-fallback">
+                    {tab.title?.charAt(0).toUpperCase() ?? '•'}
+                  </div>
+                )}
+              </div>
+              <div className="drag-ghost__title">{tab.title ?? tab.url ?? 'Untitled'}</div>
+            </div>
+          </div>
+        );
+      })()}
+
       {/* Error Message */}
       {
         errorMessage && (
@@ -925,7 +1013,7 @@ export default function App() {
                 role="button"
                 tabIndex={0}
                 className={`space-pill space-pill--space${activeSpaceId === space.id ? ' active' : ''}${dragOverSpaceId === space.id ? ' drag-over' : ''}`}
-                style={{ background: space.color }}
+                style={{ background: space.color, color: isLightColor(space.color) ? '#1a1a1a' : undefined }}
                 onClick={() => handleSpaceSelect(space.id)}
                 onKeyDown={(event) => {
                   if (event.key === 'Enter' || event.key === ' ') {
@@ -988,14 +1076,18 @@ export default function App() {
 
             <div className="space-modal__field">
               <label className="space-modal__label">Color</label>
-              <div className="space-modal__color-wrap">
-                <input
-                  type="color"
-                  className="space-modal__color-picker"
-                  value={spaceForm.color}
-                  onChange={(e) => setSpaceForm(prev => ({ ...prev, color: e.target.value }))}
-                  aria-label="Space color"
-                />
+              <div className="space-modal__color-grid">
+                {SPACE_COLORS.map((hex) => (
+                  <button
+                    key={hex}
+                    type="button"
+                    className={`space-modal__color-swatch${spaceForm.color === hex ? ' space-modal__color-swatch--selected' : ''}`}
+                    style={{ backgroundColor: hex }}
+                    onClick={() => setSpaceForm(prev => ({ ...prev, color: hex }))}
+                    aria-label={`Color ${hex}`}
+                    title={hex}
+                  />
+                ))}
               </div>
             </div>
 
