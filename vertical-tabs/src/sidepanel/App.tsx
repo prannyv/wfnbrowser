@@ -8,6 +8,29 @@ import ContextMenu from './ContextMenu';
 const DEFAULT_SPACE_ID = 'default';
 const ALL_TABS_ID = 'all';
 
+const SPACE_EMOJIS = [
+  '💼','📁','📂','📋','📌','🗂️','📎','📝','✏️','🖊️','🖋️',
+  '📊','📈','📉','📅','🗓️','⏰','👥','🤝','📣','🧾',
+  '🏢','🧑‍💼','📇','🪪','📤','📥','🔖','📍',
+  '🎓','📚','📖','🧠','🧮','📐','📏','🧪','🔬',
+  '🧬','🌍','🏫','🧑‍🏫','👩‍🏫','👨‍🏫','📓','📒','📔',
+  '🗒️','📄','🖍️','📘','📙','📗','📕',
+  '💰','💵','💴','💶','💷','🪙','💳','🏦',
+  '💸','💹','📑','⚖️','🔢','💲',
+  '🎨','🖌️','🧵','🪡','🧶','🎭','🎬',
+  '🎤','🎧','🎼','🎹','🥁','📷','📸','🎞️','🖼️',
+  '✨','🌈','💡','🪄','🌟','🎇','🎆','🧩',
+  '💻','🖥️','⌨️','🖱️','📱','🧑‍💻','👨‍💻','👩‍💻',
+  '⚙️','🔧','🛠️','🔌','🔋','💾','📡','🌐',
+  '☁️','🛰️','🤖','🔍','🧱',
+  '🏠','🛋️','🛏️','🚗','✈️','🧳','🛒','🍕','☕',
+  '🌿','🌸','🐱','🐶','🦊','🦁','🐼','🦋',
+  '☀️','🌙','⭐','❤️','💙','💚','💛',
+  '✅','❌','⚠️','⛔','🟢','🟡','🔴','🔵','🟣',
+  '🔥','🚀','🔒','🔓','🔄','⏳'
+];
+
+
 export default function App() {
   const [tabs, setTabs] = useState<ExtendedTab[]>([]);
   const [spaces, setSpaces] = useState<Space[]>([]);
@@ -33,9 +56,42 @@ export default function App() {
   const [draggedTab, setDraggedTab] = useState<number | null>(null);
   const [isDragOverRegular, setIsDragOverRegular] = useState(false);
   const [dragOverSpaceId, setDragOverSpaceId] = useState<string | null>(null);
+  const [emojiPickerOpen, setEmojiPickerOpen] = useState(false);
   const scrollContainerRef = useRef<HTMLDivElement>(null);
   const autoScrollIntervalRef = useRef<ReturnType<typeof setInterval> | null>(null);
+  const emojiPickerRef = useRef<HTMLDivElement>(null);
+  const emojiPickerOpenRef = useRef(false);
+  emojiPickerOpenRef.current = emojiPickerOpen;
 
+  useEffect(() => {
+    if (!spaceModal) return;
+    const handleKeyDown = (e: KeyboardEvent) => {
+      if (e.key === 'Escape') {
+        if (emojiPickerOpenRef.current) {
+          setEmojiPickerOpen(false);
+        } else {
+          setSpaceModal(null);
+        }
+      }
+    };
+    document.addEventListener('keydown', handleKeyDown);
+    return () => document.removeEventListener('keydown', handleKeyDown);
+  }, [spaceModal]);
+
+  useEffect(() => {
+    if (!spaceModal) setEmojiPickerOpen(false);
+  }, [spaceModal]);
+
+  useEffect(() => {
+    if (!emojiPickerOpen) return;
+    const handleClickOutside = (e: MouseEvent) => {
+      if (emojiPickerRef.current && !emojiPickerRef.current.contains(e.target as Node)) {
+        setEmojiPickerOpen(false);
+      }
+    };
+    document.addEventListener('mousedown', handleClickOutside);
+    return () => document.removeEventListener('mousedown', handleClickOutside);
+  }, [emojiPickerOpen]);
 
   // Load initial state and subscribe to updates - SUBSCRIBE to get full state immediately.
   useEffect(() => {
@@ -352,6 +408,131 @@ export default function App() {
     }
   }, []);
 
+  const rootRef = useRef<HTMLDivElement>(null);
+  const carouselOuterRef = useRef<HTMLDivElement>(null);
+  const [swipeOffset, setSwipeOffset] = useState(0);
+  const [isSwipeDragging, setIsSwipeDragging] = useState(false);
+
+  const spaceIds = useMemo(() => [ALL_TABS_ID, ...spaces.map(s => s.id)], [spaces]);
+  const activeSpaceIndex = Math.max(0, spaceIds.indexOf(activeSpaceId));
+  const activeSpaceIndexRef = useRef(activeSpaceIndex);
+  activeSpaceIndexRef.current = activeSpaceIndex;
+
+  const handleSpaceIndexChange = useCallback((newIndex: number) => {
+    const clamped = Math.max(0, Math.min(spaceIds.length - 1, newIndex));
+    handleSpaceSelect(spaceIds[clamped]);
+  }, [spaceIds, handleSpaceSelect]);
+
+  // Switch ONLY when user lifts fingers; 50% distance or fast-swipe velocity
+  const resolveRelease = useCallback((dragDistance: number, velocity: number) => {
+    const panelWidth = carouselOuterRef.current?.clientWidth ?? 320;
+    const idx = activeSpaceIndexRef.current;
+    const len = spaceIds.length;
+    const distanceThreshold = panelWidth * 0.5;
+    const velocityThreshold = 0.4; // px/ms – fast flick can switch with less distance
+    const moveNext = dragDistance >= distanceThreshold || velocity >= velocityThreshold;
+    const movePrev = dragDistance <= -distanceThreshold || velocity <= -velocityThreshold;
+    let newIdx = idx;
+    if (moveNext && idx < len - 1) newIdx = idx + 1;
+    else if (movePrev && idx > 0) newIdx = idx - 1;
+    return Math.max(0, Math.min(len - 1, newIdx));
+  }, [spaceIds.length]);
+
+  const swipeRef = useRef<{
+    active: boolean;
+    startX: number;
+    lastX: number;
+    lastTime: number;
+    velocity: number;
+  }>({ active: false, startX: 0, lastX: 0, lastTime: 0, velocity: 0 });
+
+  const handleTouchStart = useCallback((e: React.TouchEvent) => {
+    if (e.touches.length === 2) {
+      const x = (e.touches[0].clientX + e.touches[1].clientX) / 2;
+      const now = Date.now();
+      swipeRef.current = { active: true, startX: x, lastX: x, lastTime: now, velocity: 0 };
+      setIsSwipeDragging(true);
+    }
+  }, []);
+
+  const handleTouchMove = useCallback((e: React.TouchEvent) => {
+    if (!swipeRef.current.active || e.touches.length !== 2) return;
+    e.preventDefault();
+    const x = (e.touches[0].clientX + e.touches[1].clientX) / 2;
+    const now = Date.now();
+    const dt = Math.max(1, now - swipeRef.current.lastTime);
+    const instantVelocity = (x - swipeRef.current.lastX) / dt;
+    swipeRef.current.velocity = swipeRef.current.velocity * 0.3 + instantVelocity * 0.7;
+    swipeRef.current.lastX = x;
+    swipeRef.current.lastTime = now;
+    const rawDrag = x - swipeRef.current.startX;
+    const pw = carouselOuterRef.current?.clientWidth ?? 320;
+    setSwipeOffset(Math.max(-pw, Math.min(pw, rawDrag)));
+  }, []);
+
+  const handleTouchEnd = useCallback(() => {
+    const { active, startX, lastX, velocity } = swipeRef.current;
+    swipeRef.current.active = false;
+    setIsSwipeDragging(false);
+    if (!active) return;
+    const dragDistance = lastX - startX;
+    const newIdx = resolveRelease(dragDistance, velocity);
+    handleSpaceIndexChange(newIdx);
+    setSwipeOffset(0);
+  }, [handleSpaceIndexChange, resolveRelease]);
+
+  const handleTouchCancel = useCallback(() => {
+    swipeRef.current.active = false;
+    setIsSwipeDragging(false);
+    setSwipeOffset(0);
+  }, []);
+
+  const wheelRef = useRef<{
+    dragX: number;
+    lastTime: number;
+    velocity: number;
+    gestureEndTimer: ReturnType<typeof setTimeout> | null;
+  }>({ dragX: 0, lastTime: 0, velocity: 0, gestureEndTimer: null });
+
+  useEffect(() => {
+    const el = rootRef.current;
+    if (!el) return;
+    const GESTURE_END_MS = 350;
+    const handleWheel = (e: WheelEvent) => {
+      if (Math.abs(e.deltaX) <= Math.abs(e.deltaY) || Math.abs(e.deltaX) < 3) return;
+      e.preventDefault();
+      const now = Date.now();
+      const ref = wheelRef.current;
+      if (now - ref.lastTime > 350) {
+        ref.dragX = 0;
+        ref.velocity = 0;
+      }
+      const dt = Math.max(1, now - ref.lastTime);
+      const instantVelocity = e.deltaX / dt;
+      ref.velocity = ref.velocity * 0.3 + instantVelocity * 0.7;
+      ref.lastTime = now;
+      ref.dragX += e.deltaX;
+      setIsSwipeDragging(true);
+      const pw = carouselOuterRef.current?.clientWidth ?? 320;
+      setSwipeOffset(Math.max(-pw, Math.min(pw, ref.dragX)));
+
+      if (ref.gestureEndTimer) clearTimeout(ref.gestureEndTimer);
+      ref.gestureEndTimer = setTimeout(() => {
+        ref.gestureEndTimer = null;
+        setIsSwipeDragging(false);
+        const newIdx = resolveRelease(ref.dragX, ref.velocity);
+        handleSpaceIndexChange(newIdx);
+        setSwipeOffset(0);
+        ref.dragX = 0;
+      }, GESTURE_END_MS);
+    };
+    el.addEventListener('wheel', handleWheel, { passive: false });
+    return () => {
+      el.removeEventListener('wheel', handleWheel);
+      if (wheelRef.current.gestureEndTimer) clearTimeout(wheelRef.current.gestureEndTimer);
+    };
+  }, [handleSpaceIndexChange, resolveRelease]);
+
   const handleSpaceContextMenu = useCallback((spaceId: string) => (e: React.MouseEvent) => {
     e.preventDefault();
     openEditSpaceModal(spaceId);
@@ -411,11 +592,10 @@ export default function App() {
   }, [draggedTab]);
 
   const handleSpaceDragLeave = useCallback((spaceId: string) => (e: React.DragEvent) => {
-    if (e.currentTarget.contains(e.relatedTarget as Node)) return;
-    if (dragOverSpaceId === spaceId) {
-      setDragOverSpaceId(null);
-    }
-  }, [dragOverSpaceId]);
+    const related = e.relatedTarget as Node | null;
+    if (related && e.currentTarget.contains(related)) return;
+    setDragOverSpaceId(prev => (prev === spaceId ? null : prev));
+  }, []);
 
   const handleDragOver = useCallback((e: React.DragEvent) => {
     e.preventDefault();
@@ -486,60 +666,34 @@ export default function App() {
   }, [draggedTab]);
 
 
-  // Memoize filtered and separated tabs - only recompute when deps change
-  const { pinnedTabs, regularTabs, filteredCount, pinnedTabVariant } = useMemo(() => {
+
+  const tabsPerSpace = useMemo(() => {
     const query = searchQuery.toLowerCase();
-    const spaceFiltered = activeSpaceId === ALL_TABS_ID
-      ? tabs
-      : tabs.filter(tab => (tab.spaceId ?? DEFAULT_SPACE_ID) === activeSpaceId);
-
-    const filtered = searchQuery
-      ? spaceFiltered.filter(tab =>
-        tab.title?.toLowerCase().includes(query) ||
-        tab.url?.toLowerCase().includes(query)
-      )
-      : spaceFiltered;
-
-    const pinned: ExtendedTab[] = [];
-    const regular: ExtendedTab[] = [];
-
-    // Single pass instead of two filter calls
-    for (const tab of filtered) {
-      if (tab.pinned) {
-        pinned.push(tab);
-      } else if (tab.windowId === currentWindowId) {
-        // Regular tabs: Only show if they belong to THIS window
-        regular.push(tab);
+    const result: Record<string, { pinned: ExtendedTab[]; regular: ExtendedTab[]; variant: string; filteredCount: number }> = {};
+    for (const spaceId of spaceIds) {
+      const spaceFiltered = spaceId === ALL_TABS_ID
+        ? tabs
+        : tabs.filter(tab => (tab.spaceId ?? DEFAULT_SPACE_ID) === spaceId);
+      const filtered = query
+        ? spaceFiltered.filter(tab =>
+          tab.title?.toLowerCase().includes(query) ||
+          tab.url?.toLowerCase().includes(query)
+        )
+        : spaceFiltered;
+      const pinned: ExtendedTab[] = [];
+      const regular: ExtendedTab[] = [];
+      for (const tab of filtered) {
+        if (tab.pinned) pinned.push(tab);
+        else if (tab.windowId === currentWindowId) regular.push(tab);
       }
+      let variant = 'single';
+      if (pinned.length > 4) variant = 'compact';
+      else if (pinned.length > 2) variant = 'minimal';
+      else if (pinned.length === 2) variant = 'elongated';
+      result[spaceId] = { pinned, regular, variant, filteredCount: filtered.length };
     }
-
-    // Determine variant based on count
-    let variant = 'single';
-    if (pinned.length > 4) {
-      // 5-6 tabs: Compact (Rectangles, 96px wide)
-      variant = 'compact';
-    } else if (pinned.length > 2) {
-      // 3-4 tabs: Minimal (Squares, 48px wide)
-      variant = 'minimal';
-    } else if (pinned.length === 2) {
-      // 2 tabs: Elongated
-      variant = 'elongated';
-    }
-    // 1 tab: Single (Default)
-
-    return {
-      pinnedTabs: pinned,
-      regularTabs: regular,
-      filteredCount: filtered.length,
-      pinnedTabVariant: variant
-    };
-  }, [tabs, searchQuery, activeSpaceId]);
-
-  const isTabListMinimized = useMemo(() => {
-    if (!draggedTab || !dragOverSpaceId) return false;
-    const tabSpaceId = tabs.find(t => t.id === draggedTab)?.spaceId ?? DEFAULT_SPACE_ID;
-    return dragOverSpaceId !== tabSpaceId;
-  }, [draggedTab, dragOverSpaceId, tabs]);
+    return result;
+  }, [tabs, searchQuery, currentWindowId, spaceIds]);
 
   if (isLoading) {
     return (
@@ -555,103 +709,20 @@ export default function App() {
     );
   }
 
+  const panelPct = spaceIds.length > 0 ? 100 / spaceIds.length : 100;
+
   return (
     <div
+      ref={rootRef}
       className={`sidepanel-root${isClosing ? ' sidepanel-root--closing' : ''}`}
-      style={{ display: 'flex', flexDirection: 'column', height: '100%' }}
+      style={{ display: 'flex', flexDirection: 'column', height: '100%', overflow: 'hidden' }}
+      onTouchStart={handleTouchStart}
+      onTouchMove={handleTouchMove}
+      onTouchEnd={handleTouchEnd}
+      onTouchCancel={handleTouchCancel}
     >
-      {/* Spaces */}
-      <div style={{ padding: '8px 12px', borderBottom: '1px solid #333' }}>
-        <div
-          style={{
-            display: 'flex',
-            alignItems: 'center',
-            gap: '6px',
-            overflowX: 'auto',
-            scrollbarWidth: 'none',
-          }}
-        >
-          <button
-            type="button"
-            onClick={() => handleSpaceSelect(ALL_TABS_ID)}
-            style={{
-              padding: '6px 10px',
-              borderRadius: '999px',
-              border: activeSpaceId === ALL_TABS_ID ? '1px solid white' : '1px solid #333',
-              background: activeSpaceId === ALL_TABS_ID ? '#1f2937' : '#111',
-              color: '#e5e5e5',
-              fontSize: '12px',
-              cursor: 'pointer',
-              whiteSpace: 'nowrap',
-            }}
-          >
-            All Tabs
-          </button>
-
-          {spaces.map(space => (
-            <div
-              key={space.id}
-              onContextMenu={handleSpaceContextMenu(space.id)}
-              style={{ display: 'flex', alignItems: 'center', gap: '4px' }}
-            >
-              <div
-                role="button"
-                tabIndex={0}
-                onClick={() => handleSpaceSelect(space.id)}
-                onKeyDown={(event) => {
-                  if (event.key === 'Enter' || event.key === ' ') {
-                    event.preventDefault();
-                    handleSpaceSelect(space.id);
-                  }
-                }}
-                onContextMenu={handleSpaceContextMenu(space.id)}
-                onDragOver={handleSpaceDragOver(space.id)}
-                onDrop={handleSpaceDrop(space.id)}
-                onDragLeave={handleSpaceDragLeave(space.id)}
-                style={{
-                  padding: '6px 10px',
-                  borderRadius: '999px',
-                  border: activeSpaceId === space.id ? '1px solid white' : '1px solid transparent',
-                  background: dragOverSpaceId === space.id ? 'rgba(59, 130, 246, 0.2)' : space.color,
-                  color: '#fff',
-                  fontSize: '12px',
-                  cursor: 'pointer',
-                  whiteSpace: 'nowrap',
-                  display: 'flex',
-                  alignItems: 'center',
-                  gap: '6px',
-                  outline: 'none',
-                }}
-              >
-                {space.icon && <span>{space.icon}</span>}
-                <span>{space.name}</span>
-              </div>
-            </div>
-          ))}
-
-          <button
-            type="button"
-            onClick={openCreateSpaceModal}
-            style={{
-              width: '26px',
-              height: '26px',
-              borderRadius: '999px',
-              border: '1px dashed #444',
-              background: 'transparent',
-              color: '#bbb',
-              fontSize: '16px',
-              cursor: 'pointer',
-            }}
-            aria-label="Create new space"
-            title="Create space"
-          >
-            +
-          </button>
-        </div>
-      </div>
-
       {/* Search */}
-      <div style={{ padding: '12px', borderBottom: '1px solid #333' }}>
+      <div style={{ padding: '12px', borderBottom: '1px solid #333', flexShrink: 0 }}>
         <input
           type="text"
           placeholder="Search tabs..."
@@ -670,120 +741,138 @@ export default function App() {
         />
       </div>
 
-      {/* Tab list - scrollable */}
+      {/* Tab list - carousel with swipe (Arc-style: one space per gesture) */}
       <div
-        ref={scrollContainerRef}
-        style={{
-          flex: isTabListMinimized ? 0 : 1,
-          maxHeight: isTabListMinimized ? 0 : undefined,
-          overflow: isTabListMinimized ? 'hidden' : undefined,
-          overflowY: isTabListMinimized ? undefined : 'auto',
-          overflowX: 'hidden',
-          minHeight: 0,
-          userSelect: 'none',
-          WebkitUserSelect: 'none',
-          MozUserSelect: 'none',
-          msUserSelect: 'none',
-          transition: 'flex 0.2s ease, max-height 0.2s ease',
-        }}
+        ref={carouselOuterRef}
+        style={{ flex: 1, minHeight: 0, overflow: 'hidden', display: 'flex', flexDirection: 'column' }}
       >
-        <div style={{ minHeight: '100%', display: 'flex', flexDirection: 'column', boxSizing: 'border-box' }}>
-          {/*Pinned tabs*/}
-          {pinnedTabs.length > 0 && (
-            <div
-              style={{ marginBottom: '16px' }}
-              onDragOver={handleDragOver}
-              onDragLeave={handleDragLeave}
-              onDrop={handleDrop}
-            >
-              <div style={{
-                fontSize: '11px',
-                color: '#888',
-                textTransform: 'uppercase',
-                letterSpacing: '0.05em',
-                padding: '0 8px',
-                marginBottom: '8px'
-              }}>
-                Pinned Tabs
-              </div>
-              <div style={{
-                display: 'flex',
-                flexDirection: 'row',
-                flexWrap: 'wrap',
-                gap: '4px',
-                padding: '4px 8px',
-                justifyContent: 'flex-start',
-                alignItems: 'flex-end',
-                backgroundColor: isDragOverPinned ? 'rgba(59, 130, 246, 0.1)' : undefined,
-                border: isDragOverPinned ? '2px solid rgba(59, 130, 246, 0.5)' : '2px solid transparent',
-                borderRadius: '8px',
-                transition: 'all 0.2s ease',
-                minHeight: '56px',
-                width: '100%',
-              }}>
-                {pinnedTabs.map((tab) => (
-                  <Tab
-                    key={tab.id}
-                    tab={tab}
-                    isActive={tab.id === activeTabId}
-                    variant={pinnedTabVariant as 'default' | 'compact' | 'minimal' | 'elongated' | 'single'}
-                    onClick={() => handleTabClick(tab)}
-                    onClose={(e) => tab.id && handleCloseTab(e, tab.id)}
-                    onContextMenu={(e) => handleContextMenu(e, tab)}
-                    onDragStart={handleDragStart(tab)}
-                    onDragEnd={handleDragEnd}
-                  />
-                ))}
-              </div>
-            </div>
-          )}
+        <div
+          style={{
+            display: 'flex',
+            width: `${spaceIds.length * 100}%`,
+            height: '100%',
+            minHeight: 0,
+            transform: `translate3d(calc(${-activeSpaceIndex * panelPct}% - ${swipeOffset}px), 0, 0)`,
+            transition: !isSwipeDragging ? 'transform 0.18s cubic-bezier(0.2, 0, 0.2, 1)' : 'none',
+            willChange: isSwipeDragging ? 'transform' : 'auto',
+          }}
+        >
+          {spaceIds.map((spaceId) => {
+            const { pinned, regular, variant } = tabsPerSpace[spaceId] ?? { pinned: [], regular: [], variant: 'single' };
+            const isActive = spaceId === activeSpaceId;
+            return (
+              <div
+                key={spaceId}
+                ref={isActive ? scrollContainerRef : undefined}
+                className="tab-list-container"
+                style={{
+                  width: `${panelPct}%`,
+                  flexShrink: 0,
+                  overflowY: 'auto',
+                  overflowX: 'hidden',
+                  minHeight: 0,
+                  WebkitOverflowScrolling: 'touch',
+                }}
+              >
+                <div style={{ padding: '8px 0', boxSizing: 'border-box' }}>
+                  {/* Pinned tabs */}
+                  {pinned.length > 0 && (
+                    <div
+                      style={{ marginBottom: '16px' }}
+                      onDragOver={handleDragOver}
+                      onDragLeave={handleDragLeave}
+                      onDrop={handleDrop}
+                    >
+                      <div style={{
+                        fontSize: '11px',
+                        color: '#888',
+                        textTransform: 'uppercase',
+                        letterSpacing: '0.05em',
+                        padding: '0 8px',
+                        marginBottom: '8px'
+                      }}>
+                        Pinned Tabs
+                      </div>
+                      <div style={{
+                        display: 'flex',
+                        flexDirection: 'row',
+                        flexWrap: 'wrap',
+                        gap: '4px',
+                        padding: '4px 8px',
+                        justifyContent: 'flex-start',
+                        alignItems: 'flex-end',
+                        backgroundColor: isDragOverPinned ? 'rgba(59, 130, 246, 0.1)' : undefined,
+                        border: isDragOverPinned ? '2px solid rgba(59, 130, 246, 0.5)' : '2px solid transparent',
+                        borderRadius: '8px',
+                        transition: 'all 0.2s ease',
+                        minHeight: '56px',
+                        width: '100%',
+                      }}>
+                        {pinned.map((tab) => (
+                          <Tab
+                            key={tab.id}
+                            tab={tab}
+                            isActive={tab.id === activeTabId}
+                            variant={variant as 'default' | 'compact' | 'minimal' | 'elongated' | 'single'}
+                            onClick={() => handleTabClick(tab)}
+                            onClose={(e) => tab.id && handleCloseTab(e, tab.id)}
+                            onContextMenu={(e) => handleContextMenu(e, tab)}
+                            onDragStart={handleDragStart(tab)}
+                            onDragEnd={handleDragEnd}
+                          />
+                        ))}
+                      </div>
+                    </div>
+                  )}
 
-          {/* Regular tabs */}
-          {pinnedTabs.length > 0 && regularTabs.length > 0 && (
-            <div style={{
-              fontSize: '11px',
-              color: '#888',
-              textTransform: 'uppercase',
-              letterSpacing: '0.05em',
-              padding: '0 8px',
-              marginBottom: '8px'
-            }}>
-              Tabs ({regularTabs.length})
-            </div>
-          )}
-          <div
-            style={{
-              flex: 1,
-              minHeight: '100px',
-              backgroundColor: isDragOverRegular ? 'rgba(59, 130, 246, 0.1)' : undefined,
-              border: isDragOverRegular ? '2px solid rgba(59, 130, 246, 0.5)' : '2px solid transparent',
-              borderRadius: '10px',
-              padding: '0 8px 8px',
-            }}
-            onDragOver={handleDragOverRegular}
-            onDragLeave={handleDragLeaveRegular}
-            onDrop={handleDropRegular}
-          >
-            {regularTabs.map((tab) => (
-              <Tab
-                key={tab.id}
-                tab={tab}
-                isActive={tab.id === activeTabId}
-                fullWidth
-                onClick={() => handleTabClick(tab)}
-                onClose={(e) => tab.id && handleCloseTab(e, tab.id)}
-                onContextMenu={(e) => handleContextMenu(e, tab)}
-                onDragStart={handleDragStart(tab)}
-                onDragEnd={handleDragEnd}
-              />
-            ))}
-          </div>
+                  {/* Regular tabs */}
+                  {pinned.length > 0 && regular.length > 0 && (
+                    <div style={{
+                      fontSize: '11px',
+                      color: '#888',
+                      textTransform: 'uppercase',
+                      letterSpacing: '0.05em',
+                      padding: '0 8px',
+                      marginBottom: '8px'
+                    }}>
+                      Tabs ({regular.length})
+                    </div>
+                  )}
+                  <div
+                    style={{
+                      backgroundColor: isDragOverRegular ? 'rgba(59, 130, 246, 0.1)' : undefined,
+                      border: isDragOverRegular ? '2px solid rgba(59, 130, 246, 0.5)' : '2px solid transparent',
+                      borderRadius: '10px',
+                      padding: '0 8px 8px',
+                    }}
+                    onDragOver={handleDragOverRegular}
+                    onDragLeave={handleDragLeaveRegular}
+                    onDrop={handleDropRegular}
+                  >
+                    {regular.map((tab) => (
+                      <Tab
+                        key={tab.id}
+                        tab={tab}
+                        isActive={tab.id === activeTabId}
+                        fullWidth
+                        onClick={() => handleTabClick(tab)}
+                        onClose={(e) => tab.id && handleCloseTab(e, tab.id)}
+                        onContextMenu={(e) => handleContextMenu(e, tab)}
+                        onDragStart={handleDragStart(tab)}
+                        onDragEnd={handleDragEnd}
+                      />
+                    ))}
+                  </div>
 
-          {filteredCount === 0 && (
-            <div style={{ textAlign: 'center', color: '#888', padding: '32px 0' }}>
-              {searchQuery ? 'No matching tabs' : 'No tabs open'}
-            </div>
-          )}
+                  {((tabsPerSpace[spaceId]?.filteredCount) ?? 0) === 0 && (
+                    <div style={{ textAlign: 'center', color: '#888', padding: '32px 0' }}>
+                      {searchQuery ? 'No matching tabs' : 'No tabs open'}
+                    </div>
+                  )}
+                </div>
+              </div>
+            );
+          })}
         </div>
       </div>
 
@@ -809,129 +898,178 @@ export default function App() {
       }
 
       {/* Footer */}
-      <div style={{ padding: '8px', borderTop: '1px solid #333' }}>
+      <div style={{ padding: '8px', borderTop: '1px solid #333', flexShrink: 0 }}>
         <div style={{ fontSize: '11px', color: '#888', textAlign: 'center' }}>
           {tabs.length} tab{tabs.length !== 1 ? 's' : ''} open
         </div>
       </div>
 
+      {/* Spaces - bottom only */}
+      <div className="spaces-bar" style={{ flexShrink: 0 }}>
+        <div className="spaces-row">
+          <button
+            type="button"
+            className={`space-pill space-pill--all${activeSpaceId === ALL_TABS_ID ? ' active' : ''}`}
+            onClick={() => handleSpaceSelect(ALL_TABS_ID)}
+          >
+            All Tabs
+          </button>
+
+          {spaces.map(space => (
+            <div
+              key={space.id}
+              onContextMenu={handleSpaceContextMenu(space.id)}
+              style={{ display: 'flex', alignItems: 'center' }}
+            >
+              <div
+                role="button"
+                tabIndex={0}
+                className={`space-pill space-pill--space${activeSpaceId === space.id ? ' active' : ''}${dragOverSpaceId === space.id ? ' drag-over' : ''}`}
+                style={{ background: space.color }}
+                onClick={() => handleSpaceSelect(space.id)}
+                onKeyDown={(event) => {
+                  if (event.key === 'Enter' || event.key === ' ') {
+                    event.preventDefault();
+                    handleSpaceSelect(space.id);
+                  }
+                }}
+                onContextMenu={handleSpaceContextMenu(space.id)}
+                onDragOver={handleSpaceDragOver(space.id)}
+                onDrop={handleSpaceDrop(space.id)}
+                onDragLeave={handleSpaceDragLeave(space.id)}
+              >
+                {space.icon && <span className="space-pill__icon">{space.icon}</span>}
+                <span>{space.name}</span>
+              </div>
+            </div>
+          ))}
+
+          <button
+            type="button"
+            className="space-pill-add"
+            onClick={openCreateSpaceModal}
+            aria-label="Create new space"
+            title="Create space"
+          >
+            +
+          </button>
+        </div>
+      </div>
+
       {/* Space Modal */}
       {spaceModal && (
-        <div style={{
-          position: 'fixed',
-          inset: 0,
-          backgroundColor: 'rgba(0,0,0,0.6)',
-          display: 'flex',
-          alignItems: 'center',
-          justifyContent: 'center',
-          zIndex: 900,
-        }}>
-          <div style={{
-            width: '320px',
-            background: '#111',
-            border: '1px solid #333',
-            borderRadius: '12px',
-            padding: '16px',
-            color: '#e5e5e5',
-            boxShadow: '0 10px 30px rgba(0,0,0,0.4)',
-          }}>
-            <div style={{ fontSize: '14px', fontWeight: 600, marginBottom: '12px' }}>
+        <div
+          className="space-modal-backdrop"
+          onClick={() => setSpaceModal(null)}
+        >
+          <div
+            className="space-modal"
+            onClick={(e) => e.stopPropagation()}
+            role="dialog"
+            aria-modal
+            aria-labelledby="space-modal-title"
+          >
+            <h2 id="space-modal-title" className="space-modal__title">
               {spaceModal.mode === 'create' ? 'Create Space' : 'Edit Space'}
-            </div>
-            <div style={{ display: 'flex', flexDirection: 'column', gap: '10px' }}>
+            </h2>
+
+            <div className="space-modal__field">
+              <label htmlFor="space-name" className="space-modal__label">Name</label>
               <input
+                id="space-name"
                 type="text"
-                placeholder="Space name"
+                className="space-modal__input"
+                placeholder="Work, Personal, etc."
                 value={spaceForm.name}
                 onChange={(e) => setSpaceForm(prev => ({ ...prev, name: e.target.value }))}
-                style={{
-                  width: '100%',
-                  padding: '8px 10px',
-                  backgroundColor: '#1f1f1f',
-                  borderRadius: '8px',
-                  fontSize: '13px',
-                  color: '#e5e5e5',
-                  border: '1px solid #333',
-                  outline: 'none',
-                }}
+                autoFocus
               />
-              <div style={{ display: 'flex', alignItems: 'center', gap: '8px' }}>
+            </div>
+
+            <div className="space-modal__field">
+              <label className="space-modal__label">Color</label>
+              <div className="space-modal__color-wrap">
                 <input
                   type="color"
+                  className="space-modal__color-picker"
                   value={spaceForm.color}
                   onChange={(e) => setSpaceForm(prev => ({ ...prev, color: e.target.value }))}
-                  style={{ width: '36px', height: '32px', border: 'none', background: 'transparent' }}
-                />
-                <input
-                  type="text"
-                  placeholder="Icon (emoji)"
-                  value={spaceForm.icon}
-                  onChange={(e) => setSpaceForm(prev => ({ ...prev, icon: e.target.value }))}
-                  style={{
-                    flex: 1,
-                    padding: '8px 10px',
-                    backgroundColor: '#1f1f1f',
-                    borderRadius: '8px',
-                    fontSize: '13px',
-                    color: '#e5e5e5',
-                    border: '1px solid #333',
-                    outline: 'none',
-                  }}
+                  aria-label="Space color"
                 />
               </div>
             </div>
-            <div style={{
-              display: 'flex',
-              justifyContent: 'space-between',
-              marginTop: '16px',
-              gap: '8px',
-            }}>
-              <div style={{ display: 'flex', gap: '8px' }}>
-                <button
-                  type="button"
-                  onClick={() => setSpaceModal(null)}
-                  style={{
-                    padding: '8px 12px',
-                    borderRadius: '8px',
-                    border: '1px solid #333',
-                    background: '#1a1a1a',
-                    color: '#ddd',
-                    cursor: 'pointer',
-                  }}
-                >
-                  Cancel
-                </button>
-                <button
-                  type="button"
-                  onClick={handleSpaceSave}
-                  style={{
-                    padding: '8px 12px',
-                    borderRadius: '8px',
-                    border: '1px solid #2563eb',
-                    background: '#2563eb',
-                    color: '#fff',
-                    cursor: 'pointer',
-                  }}
-                >
-                  Save
-                </button>
-              </div>
+
+            <div className="space-modal__field" ref={emojiPickerRef} style={{ position: 'relative' }}>
+              <label className="space-modal__label">Icon</label>
+              <button
+                type="button"
+                className="space-modal__emoji-trigger"
+                onClick={() => setEmojiPickerOpen(open => !open)}
+                aria-label="Choose emoji"
+                aria-expanded={emojiPickerOpen}
+              >
+                {spaceForm.icon ? (
+                  <span>{spaceForm.icon}</span>
+                ) : (
+                  <span className="space-modal__emoji-placeholder">😀</span>
+                )}
+              </button>
+              {emojiPickerOpen && (
+                <div className="space-modal__emoji-popover">
+                  <div className="space-modal__emoji-grid">
+                    <button
+                      type="button"
+                      className="space-modal__emoji-btn"
+                      onClick={() => {
+                        setSpaceForm(prev => ({ ...prev, icon: '' }));
+                        setEmojiPickerOpen(false);
+                      }}
+                      title="No icon"
+                    >
+                      ✕
+                    </button>
+                    {SPACE_EMOJIS.map(emoji => (
+                      <button
+                        key={emoji}
+                        type="button"
+                        className="space-modal__emoji-btn"
+                        onClick={() => {
+                          setSpaceForm(prev => ({ ...prev, icon: emoji }));
+                          setEmojiPickerOpen(false);
+                        }}
+                      >
+                        {emoji}
+                      </button>
+                    ))}
+                  </div>
+                </div>
+              )}
+            </div>
+
+            <div className="space-modal__actions">
               {spaceModal.mode === 'edit' && spaceModal.spaceId !== DEFAULT_SPACE_ID && (
                 <button
                   type="button"
+                  className="space-modal__btn space-modal__btn--danger"
                   onClick={handleSpaceDelete}
-                  style={{
-                    padding: '8px 12px',
-                    borderRadius: '8px',
-                    border: '1px solid #7f1d1d',
-                    background: '#7f1d1d',
-                    color: '#fff',
-                    cursor: 'pointer',
-                  }}
                 >
                   Delete
                 </button>
               )}
+              <button
+                type="button"
+                className="space-modal__btn space-modal__btn--secondary"
+                onClick={() => setSpaceModal(null)}
+              >
+                Cancel
+              </button>
+              <button
+                type="button"
+                className="space-modal__btn space-modal__btn--primary"
+                onClick={handleSpaceSave}
+              >
+                Save
+              </button>
             </div>
           </div>
         </div>
