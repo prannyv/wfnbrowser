@@ -423,6 +423,21 @@ export class StateManager {
   }
 
   /**
+   * Immediately persist state to chrome.storage.local (use when you need to await completion)
+   */
+  async saveNow(): Promise<void> {
+    if (this.saveDebounceTimer) {
+      clearTimeout(this.saveDebounceTimer);
+      this.saveDebounceTimer = null;
+    }
+    await savePersistedState({
+      spaces: this.spaces,
+      settings: this.settings,
+      tabMetadata: this.tabMetadata,
+    });
+  }
+
+  /**
    * Schedule a debounced save to storage
    */
   private scheduleSave(options: { immediate?: boolean } = {}): void {
@@ -431,22 +446,13 @@ export class StateManager {
     }
 
     if (options.immediate) {
-      void savePersistedState({
-        spaces: this.spaces,
-        settings: this.settings,
-        tabMetadata: this.tabMetadata,
-      });
+      void this.saveNow();
       return;
     }
 
-    this.saveDebounceTimer = setTimeout(async () => {
-      console.log('[StateManager] Persisting state...');
-      await savePersistedState({
-        spaces: this.spaces,
-        settings: this.settings,
-        tabMetadata: this.tabMetadata,
-      });
-      console.log('[StateManager] State persisted');
+    this.saveDebounceTimer = setTimeout(() => {
+      this.saveDebounceTimer = null;
+      void this.saveNow();
     }, this.SAVE_DEBOUNCE_MS);
   }
 }
