@@ -14,10 +14,14 @@
     "tabGroups",
     "storage",
     "sidePanel",
-    "activeTab"
+    "activeTab",
+    "bookmarks",
+    "history",
+    "downloads"
   ],
   "host_permissions": [
-    "http://localhost:5173/*"
+    "http://localhost:5173/*",
+    "https://www.google.com/*"
   ],
   "content_security_policy": {
     "extension_pages": "script-src 'self' 'wasm-unsafe-eval'; connect-src 'self' http://localhost:5173 ws://localhost:5173;"
