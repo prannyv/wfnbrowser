@@ -665,7 +665,7 @@ body {
   background: rgba(99, 102, 241, 0.3);
 }
 
-/* New Tab Page - minimal spotlight */
+/* New Tab Page - minimal spotlight (Arc-style center-top) */
 .newtab-root {
   min-height: 100vh;
   display: flex;

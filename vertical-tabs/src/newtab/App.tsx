@@ -13,6 +13,7 @@ interface SearchResult {
 const DEBOUNCE_MS = 80;
 const MAX_RESULTS = 8;
 const HIGHLIGHT_ITEMS = 6;
+const DEFAULT_RECENT_COUNT = 8;
 
 interface DownloadItem {
   id: number;
@@ -37,8 +38,69 @@ export default function App() {
   const [isSearching, setIsSearching] = useState(false);
   const [downloads, setDownloads] = useState<DownloadItem[]>([]);
   const [bookmarks, setBookmarks] = useState<BookmarkItem[]>([]);
+  const [isFocused, setIsFocused] = useState(true);
   const inputRef = useRef<HTMLInputElement>(null);
   const debounceRef = useRef<ReturnType<typeof setTimeout> | null>(null);
+  const queryRef = useRef(query);
+  queryRef.current = query;
+
+  const loadDefaultResults = useCallback(async () => {
+    setIsSearching(true);
+    try {
+      const [tabs, bookmarkTree] = await Promise.all([
+        chrome.tabs.query({}),
+        chrome.bookmarks.getTree(),
+      ]);
+
+      const out: SearchResult[] = [];
+      const seen = new Set<string>();
+
+      // Recent tabs: sort by lastAccessed, exclude internal URLs
+      const validTabs = tabs
+        .filter(t => t.url && !t.url.startsWith('chrome://') && !t.url.startsWith('chrome-extension://'))
+        .sort((a, b) => (b.lastAccessed ?? 0) - (a.lastAccessed ?? 0));
+
+      for (const tab of validTabs.slice(0, DEFAULT_RECENT_COUNT)) {
+        const key = `tab:${tab.id}`;
+        if (seen.has(key)) continue;
+        seen.add(key);
+        out.push({
+          id: key,
+          type: 'tab',
+          title: tab.title || tab.url || 'Untitled',
+          url: tab.url!,
+          favIconUrl: tab.favIconUrl,
+        });
+      }
+
+      // Bookmarks Bar (top-level bookmarks)
+      const bookmarkBar = bookmarkTree[0]?.children?.find(n => n.title === 'Bookmarks Bar');
+      const barChildren = bookmarkBar?.children ?? [];
+      for (const node of barChildren) {
+        if (out.length >= DEFAULT_RECENT_COUNT) break;
+        if (node.url) {
+          const key = `bm:${node.id}`;
+          if (seen.has(key)) continue;
+          seen.add(key);
+          out.push({
+            id: key,
+            type: 'bookmark',
+            title: node.title || node.url,
+            url: node.url,
+            favIconUrl: undefined,
+          });
+        }
+      }
+
+      setResults(out.slice(0, DEFAULT_RECENT_COUNT));
+      setSelectedIndex(0);
+    } catch (e) {
+      console.error('[NewTab] Load default error:', e);
+      setResults([]);
+    } finally {
+      setIsSearching(false);
+    }
+  }, []);
 
   const loadHighlights = useCallback(async () => {
     try {
@@ -160,7 +222,11 @@ export default function App() {
   useEffect(() => {
     if (debounceRef.current) clearTimeout(debounceRef.current);
     if (!query.trim()) {
-      setResults([]);
+      if (isFocused) {
+        loadDefaultResults();
+      } else {
+        setResults([]);
+      }
       setSelectedIndex(0);
       return;
     }
@@ -168,7 +234,7 @@ export default function App() {
     return () => {
       if (debounceRef.current) clearTimeout(debounceRef.current);
     };
-  }, [query, search]);
+  }, [query, isFocused, search, loadDefaultResults]);
 
   const goTo = useCallback((result: SearchResult | null) => {
     if (result) {
@@ -197,6 +263,29 @@ export default function App() {
     const top = results[selectedIndex] ?? null;
     goTo(top);
   }, [results, selectedIndex, goTo]);
+
+  const handleFocus = useCallback(() => {
+    setIsFocused(true);
+    if (!query.trim()) loadDefaultResults();
+  }, [query, loadDefaultResults]);
+
+  const handleBlur = useCallback(() => {
+    setTimeout(() => {
+      setIsFocused(false);
+      if (!queryRef.current.trim()) setResults([]);
+    }, 180);
+  }, []);
+
+  useEffect(() => {
+    const onKeyDown = (e: KeyboardEvent) => {
+      if ((e.metaKey || e.ctrlKey) && e.key === 'k') {
+        e.preventDefault();
+        inputRef.current?.focus();
+      }
+    };
+    document.addEventListener('keydown', onKeyDown);
+    return () => document.removeEventListener('keydown', onKeyDown);
+  }, []);
 
   const handleKeyDown = useCallback((e: React.KeyboardEvent) => {
     if (e.key === 'Escape') {
@@ -253,6 +342,8 @@ export default function App() {
             type="text"
             value={query}
             onChange={e => setQuery(e.target.value)}
+            onFocus={handleFocus}
+            onBlur={handleBlur}
             onKeyDown={handleKeyDown}
             placeholder="Search or enter URL"
             autoFocus
@@ -310,7 +401,7 @@ export default function App() {
       </div>
       )}
 
-      <p className="newtab-footer">⌘ Enter · Esc</p>
+      <p className="newtab-footer">⌘K to focus · ⌘ Enter · Esc</p>
     </div>
   );
 }
