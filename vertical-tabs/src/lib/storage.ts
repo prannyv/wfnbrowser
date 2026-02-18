@@ -27,7 +27,7 @@ const DEFAULT_SETTINGS: UserSettings = {
 
 const DEFAULT_SPACE: Space = {
   id: DEFAULT_SPACE_ID,
-  name: 'Default',
+  name: 'Home',
   color: '#4a9eff',
   tabIds: [],
   rules: [],

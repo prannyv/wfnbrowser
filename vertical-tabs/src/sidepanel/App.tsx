@@ -444,6 +444,7 @@ export default function App() {
 
   const handleSpaceSelect = useCallback((spaceId: string) => {
     setActiveSpaceId(spaceId);
+    sendMessage({ type: 'SET_ACTIVE_SPACE', spaceId }).catch(console.error);
     if (spaceId !== ALL_TABS_ID) {
       sendMessage({
         type: 'UPDATE_SPACE',

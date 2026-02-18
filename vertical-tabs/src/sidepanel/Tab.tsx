@@ -1,3 +1,4 @@
+import { memo } from 'react';
 import type React from 'react';
 import type { ExtendedTab } from '@/types';
 
@@ -15,7 +16,7 @@ interface TabProps {
   onDragEnd?: (event: React.DragEvent) => void;
 }
 
-export default function Tab({
+const Tab = memo(function Tab({
   tab,
   isActive,
   variant = 'default',
@@ -109,4 +110,17 @@ export default function Tab({
       )}
     </div>
   );
-}
+}, (prev, next) => {
+  return (
+    prev.isActive === next.isActive &&
+    prev.variant === next.variant &&
+    prev.fullWidth === next.fullWidth &&
+    prev.tab.id === next.tab.id &&
+    prev.tab.title === next.tab.title &&
+    prev.tab.favIconUrl === next.tab.favIconUrl &&
+    prev.tab.pinned === next.tab.pinned &&
+    prev.tab.url === next.tab.url
+  );
+});
+
+export default Tab;

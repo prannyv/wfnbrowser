@@ -13,6 +13,7 @@ const DEFAULT_SPACE_ID = 'default';
 const tabEngine = getTabEngine();
 const stateManager = getStateManager();
 let hasRegisteredSpaceListeners = false;
+let uiActiveSpaceId: string = DEFAULT_SPACE_ID;
 
 async function initialize(): Promise<void> {
   console.log('[ServiceWorker] Initializing...');
@@ -51,7 +52,8 @@ async function initialize(): Promise<void> {
       const metadata = stateManager.getTabMetadata();
       if (metadata[tab.id]?.spaceId) return;
 
-      const assignedSpaceId = stateManager.assignTabToSpace(tab.id, DEFAULT_SPACE_ID);
+      const targetSpaceId = uiActiveSpaceId === 'all' ? DEFAULT_SPACE_ID : uiActiveSpaceId;
+      const assignedSpaceId = stateManager.assignTabToSpace(tab.id, targetSpaceId);
       tabEngine.updateTabMetadata(tab.id, { spaceId: assignedSpaceId });
       const updatedTab = tabEngine.getTab(tab.id);
       if (updatedTab) {
@@ -280,7 +282,6 @@ async function handleMessage(
       case 'ASSIGN_TAB_TO_SPACE': {
         const assignedSpaceId = stateManager.assignTabToSpace(message.tabId, message.spaceId);
         tabEngine.updateTabMetadata(message.tabId, { spaceId: assignedSpaceId });
-        await stateManager.saveNow();
         const updatedTab = tabEngine.getTab(message.tabId);
         if (updatedTab) {
           broadcastMessage({
@@ -294,7 +295,6 @@ async function handleMessage(
 
       case 'CREATE_SPACE': {
         const space = stateManager.addSpace(message.name, message.color, message.icon);
-        await stateManager.saveNow();
         sendResponse({ success: true, space });
         break;
       }
@@ -311,21 +311,24 @@ async function handleMessage(
             });
           }
         }
-        await stateManager.saveNow();
         sendResponse({ success: true });
         break;
       }
 
       case 'RENAME_SPACE': {
         stateManager.renameSpace(message.spaceId, message.name);
-        await stateManager.saveNow();
         sendResponse({ success: true });
         break;
       }
 
       case 'UPDATE_SPACE': {
         stateManager.updateSpace(message.spaceId, message.updates);
-        await stateManager.saveNow();
+        sendResponse({ success: true });
+        break;
+      }
+
+      case 'SET_ACTIVE_SPACE': {
+        uiActiveSpaceId = message.spaceId;
         sendResponse({ success: true });
         break;
       }
