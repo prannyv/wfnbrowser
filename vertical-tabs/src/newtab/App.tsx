@@ -31,8 +31,8 @@ interface PinnedTab {
 
 const DEBOUNCE_MS = 80;
 const MAX_RESULTS = 8;
-const DEFAULT_RECENT_COUNT = 4;
 const HIGHLIGHT_ITEMS = 4;
+const BOTTOM_SECTION_ITEMS = 8;
 
 function isUrl(query: string): boolean {
   return /^(https?:\/\/|www\.)/i.test(query) ||
@@ -44,10 +44,10 @@ export default function App() {
   const [results, setResults] = useState<SearchResult[]>([]);
   const [selectedIndex, setSelectedIndex] = useState(0);
   const [isSearching, setIsSearching] = useState(false);
-  const [downloads, setDownloads] = useState<DownloadItem[]>([]);
-  const [bookmarks, setBookmarks] = useState<BookmarkItem[]>([]);
   const [isFocused, setIsFocused] = useState(true);
   const [pinnedTabs, setPinnedTabs] = useState<PinnedTab[]>([]);
+  const [bottomBookmarks, setBottomBookmarks] = useState<BookmarkItem[]>([]);
+  const [bottomDownloads, setBottomDownloads] = useState<DownloadItem[]>([]);
   const inputRef = useRef<HTMLInputElement>(null);
   const debounceRef = useRef<ReturnType<typeof setTimeout> | null>(null);
   const queryRef = useRef(query);
@@ -55,30 +55,11 @@ export default function App() {
 
   const loadHighlightedSections = useCallback(async () => {
     try {
-      const [downloadItems, bookmarkTree, tabs] = await Promise.all([
-        chrome.downloads.search({ limit: 25 }).then(items =>
-          items
-            .filter(d => d.state === 'complete' && d.filename && d.id !== undefined)
-            .slice(0, HIGHLIGHT_ITEMS)
-            .map(d => ({ id: d.id!, filename: d.filename.split(/[/\\]/).pop() ?? d.filename, url: d.finalUrl || d.url }))
-        ),
-        chrome.bookmarks.getTree(),
-        chrome.tabs.query({ pinned: true }),
-      ]);
-
-      const bar = bookmarkTree[0]?.children?.find((n: { title: string }) => n.title === 'Bookmarks Bar');
-      const bms = (bar?.children ?? [])
-        .filter((n: { url?: string }) => n.url)
-        .slice(0, HIGHLIGHT_ITEMS)
-        .map((n) => ({ id: n.id!, title: n.title || n.url || '', url: n.url! }));
-
+      const tabs = await chrome.tabs.query({ pinned: true });
       const pinned = tabs
         .filter(t => t.url && !t.url.startsWith('chrome://') && !t.url.startsWith('chrome-extension://'))
         .slice(0, HIGHLIGHT_ITEMS)
         .map(t => ({ id: t.id!, title: t.title || t.url || 'Untitled', url: t.url!, favIconUrl: t.favIconUrl }));
-
-      setDownloads(downloadItems);
-      setBookmarks(bms);
       setPinnedTabs(pinned);
     } catch (e) {
       console.error('[NewTab] Load highlighted error:', e);
@@ -88,48 +69,8 @@ export default function App() {
   const loadDefaultResults = useCallback(async () => {
     setIsSearching(true);
     try {
-      const sessions = await chrome.sessions.getRecentlyClosed({ maxResults: 25 });
-
-      const out: SearchResult[] = [];
-      const seen = new Set<string>();
-
-      for (const item of sessions) {
-        if (out.length >= DEFAULT_RECENT_COUNT) break;
-
-        if (item.tab) {
-          const tab = item.tab as { sessionId?: string; url?: string; title?: string };
-          if (!tab.url || tab.url.startsWith('chrome://') || tab.url.startsWith('chrome-extension://')) continue;
-          const sessionId = tab.sessionId;
-          if (!sessionId || seen.has(sessionId)) continue;
-          seen.add(sessionId);
-          out.push({
-            id: `session:${sessionId}`,
-            type: 'tab',
-            title: tab.title || tab.url || 'Untitled',
-            url: tab.url,
-            favIconUrl: undefined,
-          });
-        } else if (item.window) {
-          const win = item.window as { tabs?: Array<{ sessionId?: string; url?: string; title?: string }> };
-          const tabs = win.tabs ?? [];
-          for (const tab of tabs) {
-            if (out.length >= DEFAULT_RECENT_COUNT) break;
-            if (!tab.url || tab.url.startsWith('chrome://') || tab.url.startsWith('chrome-extension://')) continue;
-            const sessionId = tab.sessionId;
-            if (!sessionId || seen.has(sessionId)) continue;
-            seen.add(sessionId);
-            out.push({
-              id: `session:${sessionId}`,
-              type: 'tab',
-              title: tab.title || tab.url || 'Untitled',
-              url: tab.url,
-              favIconUrl: undefined,
-            });
-          }
-        }
-      }
-
-      setResults(out.slice(0, DEFAULT_RECENT_COUNT));
+      // Don't show recent tabs in search results - just load highlights
+      setResults([]);
       setSelectedIndex(0);
       loadHighlightedSections();
     } catch (e) {
@@ -140,17 +81,19 @@ export default function App() {
     }
   }, [loadHighlightedSections]);
 
-  const loadHighlights = useCallback(async () => {
+
+  const loadBottomSections = useCallback(async () => {
     try {
       const [downloadItems, bookmarkTree] = await Promise.all([
-        chrome.downloads.search({ limit: 25 }).then(items =>
+        chrome.downloads.search({ limit: 50 }).then(items =>
           items
             .filter(d => d.state === 'complete' && d.filename && d.id !== undefined)
-            .slice(0, HIGHLIGHT_ITEMS)
+            .slice(0, BOTTOM_SECTION_ITEMS)
             .map(d => ({ id: d.id!, filename: d.filename.split(/[/\\]/).pop() ?? d.filename, url: d.finalUrl || d.url || '' }))
         ),
         chrome.bookmarks.getTree(),
       ]);
+
       const flatten = (nodes: Array<{ id?: string; title?: string; url?: string; children?: unknown[] }>): Array<{ id: string; title: string; url: string }> => {
         const out: Array<{ id: string; title: string; url: string }> = [];
         for (const n of nodes) {
@@ -159,6 +102,7 @@ export default function App() {
         }
         return out;
       };
+
       const root = bookmarkTree[0];
       const barFolder = root?.children?.[0];
       const otherFolder = root?.children?.[1];
@@ -171,17 +115,18 @@ export default function App() {
           /* id "1" may not exist in some setups */
         }
       }
-      bms = bms.slice(0, HIGHLIGHT_ITEMS);
-      setDownloads(downloadItems);
-      setBookmarks(bms);
+      bms = bms.slice(0, BOTTOM_SECTION_ITEMS);
+
+      setBottomDownloads(downloadItems);
+      setBottomBookmarks(bms);
     } catch (e) {
-      console.error('[NewTab] Load highlights error:', e);
+      console.error('[NewTab] Load bottom sections error:', e);
     }
   }, []);
 
   useEffect(() => {
-    loadHighlights();
-  }, [loadHighlights]);
+    loadBottomSections();
+  }, [loadBottomSections]);
 
   const search = useCallback(async (q: string) => {
     const trimmed = q.trim().toLowerCase();
@@ -264,16 +209,12 @@ export default function App() {
         loadDefaultResults();
       } else {
         setResults([]);
-        setDownloads([]);
-        setBookmarks([]);
         setPinnedTabs([]);
       }
       setSelectedIndex(0);
       return;
     }
     debounceRef.current = setTimeout(() => search(query), DEBOUNCE_MS);
-    setDownloads([]);
-    setBookmarks([]);
     setPinnedTabs([]);
     return () => {
       if (debounceRef.current) clearTimeout(debounceRef.current);
@@ -321,8 +262,6 @@ export default function App() {
       setIsFocused(false);
       if (!queryRef.current.trim()) {
         setResults([]);
-        setDownloads([]);
-        setBookmarks([]);
         setPinnedTabs([]);
       }
     }, 180);
@@ -410,46 +349,8 @@ export default function App() {
         )}
       </form>
 
-      {isFocused && !query.trim() && (downloads.length > 0 || bookmarks.length > 0 || pinnedTabs.length > 0) && (
+      {isFocused && !query.trim() && pinnedTabs.length > 0 && (
         <div className="newtab-highlights">
-          {downloads.length > 0 && (
-            <div className="newtab-highlight-card">
-              <div className="newtab-highlight-title">Recent Downloads</div>
-              <div className="newtab-highlight-grid">
-                {downloads.map(d => (
-                  <button
-                    key={d.id}
-                    type="button"
-                    className="newtab-highlight-item"
-                    onClick={() => chrome.downloads.open(d.id)}
-                    title={d.filename}
-                  >
-                    <span className="newtab-highlight-icon">↓</span>
-                    <span className="newtab-highlight-label">{d.filename}</span>
-                  </button>
-                ))}
-              </div>
-            </div>
-          )}
-          {bookmarks.length > 0 && (
-            <div className="newtab-highlight-card">
-              <div className="newtab-highlight-title">Bookmarks</div>
-              <div className="newtab-highlight-grid">
-                {bookmarks.map(b => (
-                  <button
-                    key={b.id}
-                    type="button"
-                    className="newtab-highlight-item"
-                    onClick={() => { window.location.href = b.url; }}
-                    title={b.title}
-                  >
-                    <span className="newtab-highlight-icon">★</span>
-                    <span className="newtab-highlight-label">{b.title}</span>
-                  </button>
-                ))}
-              </div>
-            </div>
-          )}
           {pinnedTabs.length > 0 && (
             <div className="newtab-highlight-card">
               <div className="newtab-highlight-title">Pinned Tabs</div>
@@ -471,6 +372,49 @@ export default function App() {
                       <span className="newtab-highlight-icon">◉</span>
                     )}
                     <span className="newtab-highlight-label">{t.title}</span>
+                  </button>
+                ))}
+              </div>
+            </div>
+          )}
+        </div>
+      )}
+
+      {(bottomBookmarks.length > 0 || bottomDownloads.length > 0) && (
+        <div className="newtab-bottom-sections">
+          {bottomBookmarks.length > 0 && (
+            <div className="newtab-bottom-section">
+              <div className="newtab-bottom-section-title">Bookmarks</div>
+              <div className="newtab-bottom-section-list">
+                {bottomBookmarks.map(b => (
+                  <button
+                    key={b.id}
+                    type="button"
+                    className="newtab-bottom-item"
+                    onClick={() => { window.location.href = b.url; }}
+                    title={b.title}
+                  >
+                    <span className="newtab-bottom-item-icon">★</span>
+                    <span className="newtab-bottom-item-label">{b.title}</span>
+                  </button>
+                ))}
+              </div>
+            </div>
+          )}
+          {bottomDownloads.length > 0 && (
+            <div className="newtab-bottom-section">
+              <div className="newtab-bottom-section-title">Recent Downloads</div>
+              <div className="newtab-bottom-section-list">
+                {bottomDownloads.map(d => (
+                  <button
+                    key={d.id}
+                    type="button"
+                    className="newtab-bottom-item"
+                    onClick={() => chrome.downloads.open(d.id)}
+                    title={d.filename}
+                  >
+                    <span className="newtab-bottom-item-icon">↓</span>
+                    <span className="newtab-bottom-item-label">{d.filename}</span>
                   </button>
                 ))}
               </div>
