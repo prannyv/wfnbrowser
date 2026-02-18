@@ -29,20 +29,41 @@ function isLightColor(hex: string): boolean {
   return luminance > 0.6;
 }
 
-function mutedBgFromSpaceColor(hex: string, alpha = 0.35): string {
+function blendWithBase(hex: string, base: string, alpha: number): string {
   const h = hex.replace('#', '');
   const full = h.length === 3 ? h.split('').map(c => c + c).join('') : h;
-  if (full.length !== 6) return BASE_BG;
-  const r1 = parseInt(BASE_BG.slice(1, 3), 16);
-  const g1 = parseInt(BASE_BG.slice(3, 5), 16);
-  const b1 = parseInt(BASE_BG.slice(5, 7), 16);
-  const r2 = parseInt(full.slice(0, 2), 16);
-  const g2 = parseInt(full.slice(2, 4), 16);
-  const b2 = parseInt(full.slice(4, 6), 16);
-  const r = Math.round(r1 * (1 - alpha) + r2 * alpha);
-  const g = Math.round(g1 * (1 - alpha) + g2 * alpha);
-  const b = Math.round(b1 * (1 - alpha) + b2 * alpha);
-  return `rgb(${r}, ${g}, ${b})`;
+  const b = base.replace('#', '');
+  if (full.length !== 6 || b.length !== 6) return base;
+  const r = Math.round(parseInt(b.slice(0, 2), 16) * (1 - alpha) + parseInt(full.slice(0, 2), 16) * alpha);
+  const g = Math.round(parseInt(b.slice(2, 4), 16) * (1 - alpha) + parseInt(full.slice(2, 4), 16) * alpha);
+  const bl = Math.round(parseInt(b.slice(4, 6), 16) * (1 - alpha) + parseInt(full.slice(4, 6), 16) * alpha);
+  return `rgb(${r}, ${g}, ${bl})`;
+}
+
+interface SpaceTheme {
+  bg: string;
+  inputBg: string;
+  border: string;
+  spacesBarBg: string;
+  spacesBarBorder: string;
+}
+
+const DEFAULT_THEME: SpaceTheme = {
+  bg: BASE_BG,
+  inputBg: '#2a2a2a',
+  border: '#333',
+  spacesBarBg: 'linear-gradient(0deg, rgba(30, 30, 32, 0.98) 0%, rgba(22, 22, 24, 0.98) 100%)',
+  spacesBarBorder: 'rgba(255, 255, 255, 0.06)',
+};
+
+function buildSpaceTheme(hex: string): SpaceTheme {
+  return {
+    bg: blendWithBase(hex, BASE_BG, 0.35),
+    inputBg: blendWithBase(hex, '#2a2a2a', 0.30),
+    border: blendWithBase(hex, '#333333', 0.25),
+    spacesBarBg: blendWithBase(hex, '#1a1a1c', 0.30),
+    spacesBarBorder: blendWithBase(hex, '#333333', 0.20),
+  };
 }
 
 const SPACE_EMOJIS = [
@@ -451,8 +472,23 @@ export default function App() {
         spaceId,
         updates: { lastAccessedAt: Date.now() },
       }).catch(console.error);
+
+      // Switch to the most recently active tab in this space
+      const spaceTabs = tabs.filter(t =>
+        (t.spaceId ?? DEFAULT_SPACE_ID) === spaceId &&
+        t.windowId === currentWindowId &&
+        !t.pinned
+      );
+      if (spaceTabs.length > 0) {
+        const mostRecent = spaceTabs.reduce((best, t) =>
+          (t.lastActiveAt ?? 0) > (best.lastActiveAt ?? 0) ? t : best
+        );
+        if (mostRecent.id && mostRecent.windowId) {
+          sendMessage({ type: 'SWITCH_TAB', tabId: mostRecent.id, windowId: mostRecent.windowId }).catch(console.error);
+        }
+      }
     }
-  }, []);
+  }, [tabs, currentWindowId]);
 
   const rootRef = useRef<HTMLDivElement>(null);
   const carouselOuterRef = useRef<HTMLDivElement>(null);
@@ -758,38 +794,18 @@ export default function App() {
   const panelPct = spaceIds.length > 0 ? 100 / spaceIds.length : 100;
 
   const activeSpace = activeSpaceId !== ALL_TABS_ID ? spaces.find(s => s.id === activeSpaceId) : null;
-  const tabListBg = activeSpace ? mutedBgFromSpaceColor(activeSpace.color) : BASE_BG;
+  const theme = activeSpace ? buildSpaceTheme(activeSpace.color) : DEFAULT_THEME;
 
   return (
     <div
       ref={rootRef}
       className={`sidepanel-root${isClosing ? ' sidepanel-root--closing' : ''}`}
-      style={{ display: 'flex', flexDirection: 'column', height: '100%', overflow: 'hidden' }}
+      style={{ display: 'flex', flexDirection: 'column', height: '100%', overflow: 'hidden', backgroundColor: theme.bg, transition: 'background-color 0.25s ease' }}
       onTouchStart={handleTouchStart}
       onTouchMove={handleTouchMove}
       onTouchEnd={handleTouchEnd}
       onTouchCancel={handleTouchCancel}
     >
-      {/* Search */}
-      <div style={{ padding: '12px', borderBottom: '1px solid #333', flexShrink: 0 }}>
-        <input
-          type="text"
-          placeholder="Search tabs..."
-          value={searchQuery}
-          onChange={(e) => setSearchQuery(e.target.value)}
-          style={{
-            width: '100%',
-            padding: '8px 12px',
-            backgroundColor: '#2a2a2a',
-            borderRadius: '8px',
-            fontSize: '14px',
-            color: '#e5e5e5',
-            border: 'none',
-            outline: 'none',
-          }}
-        />
-      </div>
-
       {/* Tab list - carousel with swipe (Arc-style: one space per gesture) */}
       <div
         ref={carouselOuterRef}
@@ -799,8 +815,6 @@ export default function App() {
           overflow: 'hidden',
           display: 'flex',
           flexDirection: 'column',
-          backgroundColor: tabListBg,
-          transition: 'background-color 0.25s ease',
         }}
       >
         <div
@@ -987,14 +1001,14 @@ export default function App() {
       }
 
       {/* Footer */}
-      <div style={{ padding: '8px', borderTop: '1px solid #333', flexShrink: 0 }}>
+      <div style={{ padding: '8px', borderTop: `1px solid ${theme.border}`, flexShrink: 0, transition: 'border-color 0.25s ease' }}>
         <div style={{ fontSize: '11px', color: '#888', textAlign: 'center' }}>
           {tabs.length} tab{tabs.length !== 1 ? 's' : ''} open
         </div>
       </div>
 
       {/* Spaces - bottom only */}
-      <div className="spaces-bar" style={{ flexShrink: 0 }}>
+      <div className="spaces-bar" style={{ flexShrink: 0, background: theme.spacesBarBg, borderTopColor: theme.spacesBarBorder, transition: 'background 0.25s ease, border-color 0.25s ease' }}>
         <div className="spaces-row">
           <button
             type="button"
