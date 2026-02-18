@@ -15,6 +15,38 @@ const stateManager = getStateManager();
 let hasRegisteredSpaceListeners = false;
 let uiActiveSpaceId: string = DEFAULT_SPACE_ID;
 
+// ============================================
+// Tab Inactivity Tracking
+// ============================================
+
+function enrichTabWithMetadata(tab: ExtendedTab): ExtendedTab {
+  const metadata = stateManager.getTabMetadata();
+  const tabId = tab.id;
+
+  return {
+    ...tab,
+    spaceId: tabId ? metadata[tabId]?.spaceId : undefined,
+    lastActiveAt: tabId ? metadata[tabId]?.lastActiveAt : undefined,
+  };
+}
+
+function updateLastActive(tabId: number): void {
+  const now = Date.now();
+
+  stateManager.setTabMetadata(tabId, { lastActiveAt: now });
+
+  tabEngine.updateTabMetadata(tabId, { lastActiveAt: now });
+
+  const allTabs = tabEngine.getAllTabs();
+  const found = allTabs.find(t => t.id === tabId);
+  if (found) {
+    broadcastMessage({
+      type: 'TAB_UPDATED',
+      tab: enrichTabWithMetadata(found),
+    });
+  }
+}
+
 async function initialize(): Promise<void> {
   console.log('[ServiceWorker] Initializing...');
 
@@ -24,6 +56,16 @@ async function initialize(): Promise<void> {
   // Initialize tab engine (syncs with Chrome)
   await tabEngine.initialize();
 
+  // Seed lastActiveAt for the currently active tab on init
+  try {
+    const [activeTab] = await chrome.tabs.query({ active: true, currentWindow: true });
+    if (activeTab?.id) {
+      updateLastActive(activeTab.id);
+    }
+  } catch (e) {
+    console.warn('[ServiceWorker] Could not seed lastActiveAt:', e);
+  }
+  
   // Apply persisted metadata to tabs
   const metadata = stateManager.getTabMetadata();
   for (const [tabIdStr, data] of Object.entries(metadata)) {
@@ -38,6 +80,31 @@ async function initialize(): Promise<void> {
     stateManager.removeTabMetadata(tabId);
   });
 
+    // Update lastActiveAt whenever user activates a tab
+  chrome.tabs.onActivated.addListener((activeInfo) => {
+    updateLastActive(activeInfo.tabId);
+
+    broadcastMessage({
+      type: 'TAB_ACTIVATED',
+      tabId: activeInfo.tabId,
+      windowId: activeInfo.windowId,
+    });
+  });
+
+  // When a window gains focus, mark its active tab as active "now"
+  chrome.windows.onFocusChanged.addListener(async (windowId) => {
+    if (windowId === chrome.windows.WINDOW_ID_NONE) return;
+
+    try {
+      const [activeTab] = await chrome.tabs.query({ active: true, windowId });
+      if (activeTab?.id) {
+        updateLastActive(activeTab.id);
+      }
+    } catch (e) {
+      console.warn('[ServiceWorker] Failed to update lastActiveAt on window focus:', e);
+    }
+  });
+  
   // Subscribe to state manager changes to broadcast to UI
   stateManager.subscribe(() => {
     broadcastMessage({

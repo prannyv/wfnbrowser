@@ -152,13 +152,11 @@ export default function App() {
     return () => document.removeEventListener('mousedown', handleClickOutside);
   }, [emojiPickerOpen]);
 
-  // Load initial state and subscribe to updates - SUBSCRIBE to get full state immediately.
   useEffect(() => {
     let mounted = true;
 
     async function initialize() {
       try {
-        // Get current window ID first
         const [activeTab] = await chrome.tabs.query({
           active: true,
           currentWindow: true
@@ -173,9 +171,7 @@ export default function App() {
           setActiveTabId(activeTab.id);
         }
 
-        // Subscribe to full state immediately (gets all tabs from all windows)
         await sendMessage({ type: 'SUBSCRIBE' });
-
       } catch (error) {
         console.error('[SidePanel] Failed to initialize:', error);
       } finally {
@@ -191,23 +187,17 @@ export default function App() {
     };
   }, []);
 
-  // Listen for updates from service worker
   useEffect(() => {
     const unsubscribe = onMessage((message) => {
       switch (message.type) {
         case 'STATE_SYNC': {
-          // Full state sync - keep ALL tabs in state
           setTabs(message.state.tabs.sort((a, b) => (a.index ?? 0) - (b.index ?? 0)));
           setSpaces(message.spaces);
-          // Only update active tab if it matches ours? Or just rely on local state?
-          // The background sends activeTabId globally, might be for a different window.
-          // Better to track active tab via TAB_ACTIVATED event for our window.
           break;
         }
 
         case 'TAB_CREATED': {
           setTabs(prev => {
-            // Check if tab already exists
             if (prev.some(t => t.id === message.tab.id)) {
               return prev;
             }
@@ -217,7 +207,6 @@ export default function App() {
         }
 
         case 'TAB_REMOVED': {
-          // Remove from our list
           setTabs(prev => prev.filter(t => t.id !== message.tabId));
           break;
         }
@@ -236,12 +225,8 @@ export default function App() {
             if (tabIndex !== -1) {
               const [tab] = updated.splice(tabIndex, 1);
               tab.index = message.toIndex;
-              // If window changed, we should probably re-sort completely or just update metadata
-              // For simplicity, just update and sort
               updated.splice(message.toIndex, 0, tab);
-              return updated.map((t, i) => ({ ...t, index: i })); // This re-indexing might be wrong globally?
-              // Actually TabEngine sends normalized indices per window, so we might have duplicate indices if we mix windows.
-              // BUT, we only care about index for sorting.
+              return updated.map((t, i) => ({ ...t, index: i }));
             }
             return prev;
           });
@@ -254,8 +239,6 @@ export default function App() {
         }
 
         case 'WINDOW_FOCUSED': {
-          // If a different window is focused, we might want to refresh
-          // For now, just log it
           console.log('[SidePanel] Window focused:', message.windowId);
           break;
         }
@@ -266,8 +249,6 @@ export default function App() {
         }
 
         case 'SIDE_PANEL_CLOSING': {
-          // Play a closing animation when the background script
-          // is about to toggle the side panel off
           setIsClosing(true);
           break;
         }
@@ -284,22 +265,18 @@ export default function App() {
     }
   }, [spaces, activeSpaceId]);
 
-  // Tab action handlers
   const handleTabClick = useCallback((tab: ExtendedTab) => {
     if (!tab.id) return;
 
-    // If it's a pinned tab from another window, move it here
     if (tab.pinned && currentWindowId !== null && tab.windowId !== currentWindowId) {
       sendMessage({
         type: 'MOVE_TAB',
         tabId: tab.id,
         windowId: currentWindowId,
-        index: 0 // Move to start (pinned area)
+        index: 0
       });
-      // Also activate it
       sendMessage({ type: 'SWITCH_TAB', tabId: tab.id, windowId: currentWindowId });
     } else if (tab.windowId) {
-      // Regular behavior
       sendMessage({ type: 'SWITCH_TAB', tabId: tab.id, windowId: tab.windowId });
     }
   }, [currentWindowId]);
@@ -354,7 +331,6 @@ export default function App() {
     const tab = contextMenu.tab;
     const isPinning = !tab.pinned;
 
-    // Check count limit
     const currentPinnedCount = tabs.filter(t => t.pinned).length;
 
     if (isPinning && currentPinnedCount >= 6) {
@@ -395,27 +371,23 @@ export default function App() {
       if (!container) return;
 
       const rect = container.getBoundingClientRect();
-      const scrollThreshold = 50; // pixels from edge to trigger scroll
-      const scrollSpeed = 10; // pixels per interval
+      const scrollThreshold = 50;
+      const scrollSpeed = 10;
 
       const mouseY = event.clientY;
       const distanceFromTop = mouseY - rect.top;
       const distanceFromBottom = rect.bottom - mouseY;
 
-      // Clear existing interval
       if (autoScrollIntervalRef.current) {
         clearInterval(autoScrollIntervalRef.current);
         autoScrollIntervalRef.current = null;
       }
 
-      // Scroll up if near top
       if (distanceFromTop < scrollThreshold && distanceFromTop > 0) {
         autoScrollIntervalRef.current = setInterval(() => {
           container.scrollTop -= scrollSpeed;
-        }, 16); // ~60fps
-      }
-      // Scroll down if near bottom
-      else if (distanceFromBottom < scrollThreshold && distanceFromBottom > 0) {
+        }, 16);
+      } else if (distanceFromBottom < scrollThreshold && distanceFromBottom > 0) {
         autoScrollIntervalRef.current = setInterval(() => {
           container.scrollTop += scrollSpeed;
         }, 16);
@@ -424,7 +396,6 @@ export default function App() {
 
     document.addEventListener('drag', handleDragMove);
 
-    // Cleanup on drag end
     const cleanup = () => {
       document.removeEventListener('drag', handleDragMove);
       if (autoScrollIntervalRef.current) {
@@ -443,7 +414,6 @@ export default function App() {
     setIsDragOverRegular(false);
     setDragOverSpaceId(null);
 
-    // Clear auto-scroll interval
     if (autoScrollIntervalRef.current) {
       clearInterval(autoScrollIntervalRef.current);
       autoScrollIntervalRef.current = null;
@@ -473,7 +443,6 @@ export default function App() {
         updates: { lastAccessedAt: Date.now() },
       }).catch(console.error);
 
-      // Switch to the most recently active tab in this space
       const spaceTabs = tabs.filter(t =>
         (t.spaceId ?? DEFAULT_SPACE_ID) === spaceId &&
         t.windowId === currentWindowId &&
@@ -505,13 +474,12 @@ export default function App() {
     handleSpaceSelect(spaceIds[clamped]);
   }, [spaceIds, handleSpaceSelect]);
 
-  // Switch ONLY when user lifts fingers; 50% distance or fast-swipe velocity
   const resolveRelease = useCallback((dragDistance: number, velocity: number) => {
     const panelWidth = carouselOuterRef.current?.clientWidth ?? 320;
     const idx = activeSpaceIndexRef.current;
     const len = spaceIds.length;
     const distanceThreshold = panelWidth * 0.5;
-    const velocityThreshold = 0.4; // px/ms – fast flick can switch with less distance
+    const velocityThreshold = 0.4;
     const moveNext = dragDistance >= distanceThreshold || velocity >= velocityThreshold;
     const movePrev = dragDistance <= -distanceThreshold || velocity <= -velocityThreshold;
     let newIdx = idx;
@@ -686,7 +654,6 @@ export default function App() {
   }, []);
 
   const handleDragLeave = useCallback((e: React.DragEvent) => {
-    // Prevent flickering when dragging over children (tabs)
     if (e.currentTarget.contains(e.relatedTarget as Node)) return;
     setIsDragOverPinned(false);
   }, []);
@@ -726,7 +693,6 @@ export default function App() {
   }, []);
 
   const handleDragLeaveRegular = useCallback((e: React.DragEvent) => {
-    // Prevent flickering when dragging over children (tabs)
     if (e.currentTarget.contains(e.relatedTarget as Node)) return;
     setIsDragOverRegular(false);
   }, []);
@@ -737,7 +703,6 @@ export default function App() {
 
     if (!draggedTab) return;
 
-    // Unpin the tab
     sendMessage({
       type: 'PIN_TAB',
       tabId: draggedTab,
@@ -746,8 +711,6 @@ export default function App() {
 
     setDraggedTab(null);
   }, [draggedTab]);
-
-
 
   const tabsPerSpace = useMemo(() => {
     const query = searchQuery.toLowerCase();
@@ -768,14 +731,16 @@ export default function App() {
         if (tab.pinned) pinned.push(tab);
         else if (tab.windowId === currentWindowId) regular.push(tab);
       }
-      let variant = 'single';
-      if (pinned.length > 4) variant = 'compact';
-      else if (pinned.length > 2) variant = 'minimal';
-      else if (pinned.length === 2) variant = 'elongated';
+      const count = pinned.length;
+      const variant =
+        count <= 1 ? 'single' :
+        count <= 3 ? 'elongated' :
+        count <= 4 ? 'compact' :
+        'minimal';
       result[spaceId] = { pinned, regular, variant, filteredCount: filtered.length };
     }
     return result;
-  }, [tabs, searchQuery, currentWindowId, spaceIds]);
+  }, [tabs, searchQuery, spaceIds, currentWindowId]);
 
   if (isLoading) {
     return (
@@ -806,7 +771,7 @@ export default function App() {
       onTouchEnd={handleTouchEnd}
       onTouchCancel={handleTouchCancel}
     >
-      {/* Tab list - carousel with swipe (Arc-style: one space per gesture) */}
+      {/* Tab list - carousel with swipe */}
       <div
         ref={carouselOuterRef}
         style={{
@@ -947,7 +912,7 @@ export default function App() {
         </div>
       </div>
 
-      {/* Drag ghost - follows cursor, shrinks & fades when over a space */}
+      {/* Drag ghost */}
       {dragGhostPos && draggedTab && (() => {
         const tab = tabs.find(t => t.id === draggedTab);
         if (!tab) return null;
@@ -980,25 +945,23 @@ export default function App() {
       })()}
 
       {/* Error Message */}
-      {
-        errorMessage && (
-          <div style={{
-            position: 'fixed',
-            top: `${errorMessage.y + 10}px`,
-            left: `${errorMessage.x}px`,
-            backgroundColor: '#333',
-            color: '#fff',
-            padding: '12px 20px',
-            borderRadius: '8px',
-            fontSize: '14px',
-            fontWeight: '500',
-            boxShadow: '0 4px 12px rgba(0, 0, 0, 0.3)',
-            zIndex: 750,
-          }}>
-            {errorMessage.text}
-          </div>
-        )
-      }
+      {errorMessage && (
+        <div style={{
+          position: 'fixed',
+          top: `${errorMessage.y + 10}px`,
+          left: `${errorMessage.x}px`,
+          backgroundColor: '#333',
+          color: '#fff',
+          padding: '12px 20px',
+          borderRadius: '8px',
+          fontSize: '14px',
+          fontWeight: '500',
+          boxShadow: '0 4px 12px rgba(0, 0, 0, 0.3)',
+          zIndex: 750,
+        }}>
+          {errorMessage.text}
+        </div>
+      )}
 
       {/* Footer */}
       <div style={{ padding: '8px', borderTop: `1px solid ${theme.border}`, flexShrink: 0, transition: 'border-color 0.25s ease' }}>
@@ -1007,7 +970,7 @@ export default function App() {
         </div>
       </div>
 
-      {/* Spaces - bottom only */}
+      {/* Spaces bar */}
       <div className="spaces-bar" style={{ flexShrink: 0, background: theme.spacesBarBg, borderTopColor: theme.spacesBarBorder, transition: 'background 0.25s ease, border-color 0.25s ease' }}>
         <div className="spaces-row">
           <button
@@ -1183,22 +1146,20 @@ export default function App() {
       )}
 
       {/* Context Menu */}
-      {
-        contextMenu && (
-          <ContextMenu
-            x={contextMenu.x}
-            y={contextMenu.y}
-            onClose={() => setContextMenu(null)}
-            onCopyLink={handleCopyLink}
-            onReload={handleReload}
-            onCloseTab={handleContextMenuClose}
-            onMute={handleMute}
-            isMuted={contextMenu.tab.mutedInfo?.muted ?? false}
-            onTogglePin={handleTogglePin}
-            isPinned={contextMenu.tab.pinned}
-          />
-        )
-      }
-    </div >
+      {contextMenu && (
+        <ContextMenu
+          x={contextMenu.x}
+          y={contextMenu.y}
+          onClose={() => setContextMenu(null)}
+          onCopyLink={handleCopyLink}
+          onReload={handleReload}
+          onCloseTab={handleContextMenuClose}
+          onMute={handleMute}
+          isMuted={contextMenu.tab.mutedInfo?.muted ?? false}
+          onTogglePin={handleTogglePin}
+          isPinned={contextMenu.tab.pinned}
+        />
+      )}
+    </div>
   );
 }

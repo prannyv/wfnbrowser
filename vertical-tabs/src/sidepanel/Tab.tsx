@@ -1,4 +1,4 @@
-import { memo } from 'react';
+import { memo, useState, useRef, useLayoutEffect } from 'react';
 import type React from 'react';
 import type { ExtendedTab } from '@/types';
 
@@ -10,10 +10,10 @@ interface TabProps {
   variant?: TabVariant;
   fullWidth?: boolean;
   onClick: () => void;
-  onClose: (event: React.MouseEvent) => void;
-  onContextMenu?: (event: React.MouseEvent) => void;
-  onDragStart?: (event: React.DragEvent) => void;
-  onDragEnd?: (event: React.DragEvent) => void;
+  onClose: (e: React.MouseEvent) => void;
+  onContextMenu: (e: React.MouseEvent) => void;
+  onDragStart?: (e: React.DragEvent) => void;
+  onDragEnd?: (e: React.DragEvent) => void;
 }
 
 const Tab = memo(function Tab({
@@ -27,6 +27,44 @@ const Tab = memo(function Tab({
   onDragStart,
   onDragEnd,
 }: TabProps) {
+  const [imgError, setImgError] = useState(false);
+  const [imgLoaded, setImgLoaded] = useState(false);
+  const imgRef = useRef<HTMLImageElement>(null);
+  const prevUrlRef = useRef<string | undefined>(undefined);
+
+  if (tab.favIconUrl !== prevUrlRef.current) {
+    prevUrlRef.current = tab.favIconUrl;
+    if (imgError || imgLoaded) {
+      setImgError(false);
+      setImgLoaded(false);
+    }
+  }
+
+  useLayoutEffect(() => {
+    const img = imgRef.current;
+    if (img && tab.favIconUrl && !imgError && !imgLoaded) {
+      if (img.complete && img.naturalHeight !== 0) {
+        setImgLoaded(true);
+      }
+    }
+  }, [tab.favIconUrl, imgError, imgLoaded]);
+
+  const showSpinner = tab.favIconUrl && !imgError && !imgLoaded;
+
+  const now = Date.now();
+  const lastActiveAt = tab.lastActiveAt ?? now;
+  const ageMs = now - lastActiveAt;
+  const ageHours = ageMs / (1000 * 60 * 60);
+
+  let inactivityOpacity = 1;
+  if (ageHours > 72) {
+    inactivityOpacity = 0.55;
+  } else if (ageHours > 24) {
+    inactivityOpacity = 0.7;
+  } else if (ageHours > 6) {
+    inactivityOpacity = 0.85;
+  }
+
   const isCompact = variant === 'compact';
   const isMinimal = variant === 'minimal';
   const isElongated = variant === 'elongated';
@@ -41,8 +79,9 @@ const Tab = memo(function Tab({
     '';
 
   const showTitle = isDefault || isElongated || isSingle;
-
   const classNames = ['tab-item', variantClass].filter(Boolean).join(' ');
+  const isPinned = !!tab.pinned;
+  const iconSize = isPinned ? '20px' : '32px';
 
   const handleMouseDown = (e: React.MouseEvent) => {
     if (e.button === 1) {
@@ -74,14 +113,28 @@ const Tab = memo(function Tab({
       title={tab.title ?? tab.url ?? 'Untitled tab'}
     >
       <div className="tab-icon">
-        {tab.favIconUrl ? (
-          <img
-            src={tab.favIconUrl}
-            alt=""
-            onError={(e) => {
-              (e.target as HTMLImageElement).style.display = 'none';
-            }}
-          />
+        {!imgError && tab.favIconUrl ? (
+          <>
+            {showSpinner && (
+              <div className="tab-icon-loader">
+                <div className="loader" />
+              </div>
+            )}
+            <img
+              ref={imgRef}
+              src={tab.favIconUrl}
+              alt=""
+              key={tab.favIconUrl}
+              onError={() => setImgError(true)}
+              onLoad={() => setImgLoaded(true)}
+              style={{
+                display: imgLoaded ? 'block' : 'none',
+                width: iconSize,
+                height: iconSize,
+                objectFit: 'contain',
+              }}
+            />
+          </>
         ) : (
           <div className="tab-icon-fallback">
             {tab.title?.charAt(0).toUpperCase() ?? '•'}
@@ -90,9 +143,15 @@ const Tab = memo(function Tab({
       </div>
 
       {showTitle && (
-        <div className="tab-title">
-          {tab.title ?? tab.url ?? 'Untitled'}
-        </div>
+        <span
+          className="tab-title"
+          style={{
+            opacity: isActive ? 1 : inactivityOpacity,
+            transition: 'opacity 0.2s ease',
+          }}
+        >
+          {tab.title || 'New Tab'}
+        </span>
       )}
 
       {isDefault && (
@@ -119,7 +178,8 @@ const Tab = memo(function Tab({
     prev.tab.title === next.tab.title &&
     prev.tab.favIconUrl === next.tab.favIconUrl &&
     prev.tab.pinned === next.tab.pinned &&
-    prev.tab.url === next.tab.url
+    prev.tab.url === next.tab.url &&
+    prev.tab.lastActiveAt === next.tab.lastActiveAt
   );
 });
 
