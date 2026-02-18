@@ -17,6 +17,7 @@
     "activeTab",
     "bookmarks",
     "history",
+    "sessions",
     "downloads"
   ],
   "host_permissions": [

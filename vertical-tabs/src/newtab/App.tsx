@@ -10,14 +10,10 @@ interface SearchResult {
   favIconUrl?: string;
 }
 
-const DEBOUNCE_MS = 80;
-const MAX_RESULTS = 8;
-const HIGHLIGHT_ITEMS = 6;
-const DEFAULT_RECENT_COUNT = 8;
-
 interface DownloadItem {
   id: number;
   filename: string;
+  url: string;
 }
 
 interface BookmarkItem {
@@ -25,6 +21,18 @@ interface BookmarkItem {
   title: string;
   url: string;
 }
+
+interface PinnedTab {
+  id: number;
+  title: string;
+  url: string;
+  favIconUrl?: string;
+}
+
+const DEBOUNCE_MS = 80;
+const MAX_RESULTS = 8;
+const DEFAULT_RECENT_COUNT = 4;
+const HIGHLIGHT_ITEMS = 4;
 
 function isUrl(query: string): boolean {
   return /^(https?:\/\/|www\.)/i.test(query) ||
@@ -39,68 +47,98 @@ export default function App() {
   const [downloads, setDownloads] = useState<DownloadItem[]>([]);
   const [bookmarks, setBookmarks] = useState<BookmarkItem[]>([]);
   const [isFocused, setIsFocused] = useState(true);
+  const [pinnedTabs, setPinnedTabs] = useState<PinnedTab[]>([]);
   const inputRef = useRef<HTMLInputElement>(null);
   const debounceRef = useRef<ReturnType<typeof setTimeout> | null>(null);
   const queryRef = useRef(query);
   queryRef.current = query;
 
+  const loadHighlightedSections = useCallback(async () => {
+    try {
+      const [downloadItems, bookmarkTree, tabs] = await Promise.all([
+        chrome.downloads.search({ limit: 25 }).then(items =>
+          items
+            .filter(d => d.state === 'complete' && d.filename && d.id !== undefined)
+            .slice(0, HIGHLIGHT_ITEMS)
+            .map(d => ({ id: d.id!, filename: d.filename.split(/[/\\]/).pop() ?? d.filename, url: d.finalUrl || d.url }))
+        ),
+        chrome.bookmarks.getTree(),
+        chrome.tabs.query({ pinned: true }),
+      ]);
+
+      const bar = bookmarkTree[0]?.children?.find((n: { title: string }) => n.title === 'Bookmarks Bar');
+      const bms = (bar?.children ?? [])
+        .filter((n: { url?: string }) => n.url)
+        .slice(0, HIGHLIGHT_ITEMS)
+        .map((n) => ({ id: n.id!, title: n.title || n.url || '', url: n.url! }));
+
+      const pinned = tabs
+        .filter(t => t.url && !t.url.startsWith('chrome://') && !t.url.startsWith('chrome-extension://'))
+        .slice(0, HIGHLIGHT_ITEMS)
+        .map(t => ({ id: t.id!, title: t.title || t.url || 'Untitled', url: t.url!, favIconUrl: t.favIconUrl }));
+
+      setDownloads(downloadItems);
+      setBookmarks(bms);
+      setPinnedTabs(pinned);
+    } catch (e) {
+      console.error('[NewTab] Load highlighted error:', e);
+    }
+  }, []);
+
   const loadDefaultResults = useCallback(async () => {
     setIsSearching(true);
     try {
-      const [tabs, bookmarkTree] = await Promise.all([
-        chrome.tabs.query({}),
-        chrome.bookmarks.getTree(),
-      ]);
+      const sessions = await chrome.sessions.getRecentlyClosed({ maxResults: 25 });
 
       const out: SearchResult[] = [];
       const seen = new Set<string>();
 
-      // Recent tabs: sort by lastAccessed, exclude internal URLs
-      const validTabs = tabs
-        .filter(t => t.url && !t.url.startsWith('chrome://') && !t.url.startsWith('chrome-extension://'))
-        .sort((a, b) => (b.lastAccessed ?? 0) - (a.lastAccessed ?? 0));
-
-      for (const tab of validTabs.slice(0, DEFAULT_RECENT_COUNT)) {
-        const key = `tab:${tab.id}`;
-        if (seen.has(key)) continue;
-        seen.add(key);
-        out.push({
-          id: key,
-          type: 'tab',
-          title: tab.title || tab.url || 'Untitled',
-          url: tab.url!,
-          favIconUrl: tab.favIconUrl,
-        });
-      }
-
-      // Bookmarks Bar (top-level bookmarks)
-      const bookmarkBar = bookmarkTree[0]?.children?.find(n => n.title === 'Bookmarks Bar');
-      const barChildren = bookmarkBar?.children ?? [];
-      for (const node of barChildren) {
+      for (const item of sessions) {
         if (out.length >= DEFAULT_RECENT_COUNT) break;
-        if (node.url) {
-          const key = `bm:${node.id}`;
-          if (seen.has(key)) continue;
-          seen.add(key);
+
+        if (item.tab) {
+          const tab = item.tab as { sessionId?: string; url?: string; title?: string };
+          if (!tab.url || tab.url.startsWith('chrome://') || tab.url.startsWith('chrome-extension://')) continue;
+          const sessionId = tab.sessionId;
+          if (!sessionId || seen.has(sessionId)) continue;
+          seen.add(sessionId);
           out.push({
-            id: key,
-            type: 'bookmark',
-            title: node.title || node.url,
-            url: node.url,
+            id: `session:${sessionId}`,
+            type: 'tab',
+            title: tab.title || tab.url || 'Untitled',
+            url: tab.url,
             favIconUrl: undefined,
           });
+        } else if (item.window) {
+          const win = item.window as { tabs?: Array<{ sessionId?: string; url?: string; title?: string }> };
+          const tabs = win.tabs ?? [];
+          for (const tab of tabs) {
+            if (out.length >= DEFAULT_RECENT_COUNT) break;
+            if (!tab.url || tab.url.startsWith('chrome://') || tab.url.startsWith('chrome-extension://')) continue;
+            const sessionId = tab.sessionId;
+            if (!sessionId || seen.has(sessionId)) continue;
+            seen.add(sessionId);
+            out.push({
+              id: `session:${sessionId}`,
+              type: 'tab',
+              title: tab.title || tab.url || 'Untitled',
+              url: tab.url,
+              favIconUrl: undefined,
+            });
+          }
         }
       }
 
       setResults(out.slice(0, DEFAULT_RECENT_COUNT));
       setSelectedIndex(0);
+      loadHighlightedSections();
     } catch (e) {
       console.error('[NewTab] Load default error:', e);
       setResults([]);
     } finally {
       setIsSearching(false);
     }
-  }, []);
+  }, [loadHighlightedSections]);
 
   const loadHighlights = useCallback(async () => {
     try {
@@ -109,7 +147,7 @@ export default function App() {
           items
             .filter(d => d.state === 'complete' && d.filename && d.id !== undefined)
             .slice(0, HIGHLIGHT_ITEMS)
-            .map(d => ({ id: d.id!, filename: d.filename.split(/[/\\]/).pop() ?? d.filename }))
+            .map(d => ({ id: d.id!, filename: d.filename.split(/[/\\]/).pop() ?? d.filename, url: d.finalUrl || d.url || '' }))
         ),
         chrome.bookmarks.getTree(),
       ]);
@@ -226,11 +264,17 @@ export default function App() {
         loadDefaultResults();
       } else {
         setResults([]);
+        setDownloads([]);
+        setBookmarks([]);
+        setPinnedTabs([]);
       }
       setSelectedIndex(0);
       return;
     }
     debounceRef.current = setTimeout(() => search(query), DEBOUNCE_MS);
+    setDownloads([]);
+    setBookmarks([]);
+    setPinnedTabs([]);
     return () => {
       if (debounceRef.current) clearTimeout(debounceRef.current);
     };
@@ -238,7 +282,10 @@ export default function App() {
 
   const goTo = useCallback((result: SearchResult | null) => {
     if (result) {
-      if (result.type === 'tab') {
+      if (result.type === 'tab' && result.id.startsWith('session:')) {
+        const sessionId = result.id.replace('session:', '');
+        chrome.sessions.restore(sessionId);
+      } else if (result.type === 'tab') {
         const tabId = parseInt(result.id.replace('tab:', ''), 10);
         chrome.tabs.get(tabId).then(tab => {
           chrome.tabs.update(tabId, { active: true });
@@ -272,7 +319,12 @@ export default function App() {
   const handleBlur = useCallback(() => {
     setTimeout(() => {
       setIsFocused(false);
-      if (!queryRef.current.trim()) setResults([]);
+      if (!queryRef.current.trim()) {
+        setResults([]);
+        setDownloads([]);
+        setBookmarks([]);
+        setPinnedTabs([]);
+      }
     }, 180);
   }, []);
 
@@ -358,47 +410,73 @@ export default function App() {
         )}
       </form>
 
-      {(downloads.length > 0 || bookmarks.length > 0) && (
-      <div className="newtab-highlights">
-        {downloads.length > 0 && (
-          <div className="newtab-highlight-card">
-            <div className="newtab-highlight-title">Recent Downloads</div>
-            <div className="newtab-highlight-list">
-              {downloads.map(d => (
-                <button
-                  key={d.id}
-                  type="button"
-                  className="newtab-highlight-item"
-                  onClick={() => chrome.downloads.open(d.id)}
-                  title={d.filename}
-                >
-                  <span className="newtab-highlight-icon">↓</span>
-                  <span className="newtab-highlight-label">{d.filename}</span>
-                </button>
-              ))}
+      {isFocused && !query.trim() && (downloads.length > 0 || bookmarks.length > 0 || pinnedTabs.length > 0) && (
+        <div className="newtab-highlights">
+          {downloads.length > 0 && (
+            <div className="newtab-highlight-card">
+              <div className="newtab-highlight-title">Recent Downloads</div>
+              <div className="newtab-highlight-grid">
+                {downloads.map(d => (
+                  <button
+                    key={d.id}
+                    type="button"
+                    className="newtab-highlight-item"
+                    onClick={() => chrome.downloads.open(d.id)}
+                    title={d.filename}
+                  >
+                    <span className="newtab-highlight-icon">↓</span>
+                    <span className="newtab-highlight-label">{d.filename}</span>
+                  </button>
+                ))}
+              </div>
             </div>
-          </div>
-        )}
-        {bookmarks.length > 0 && (
-          <div className="newtab-highlight-card">
-            <div className="newtab-highlight-title">Bookmarks</div>
-            <div className="newtab-highlight-list">
-              {bookmarks.map(b => (
-                <button
-                  key={b.id}
-                  type="button"
-                  className="newtab-highlight-item"
-                  onClick={() => { window.location.href = b.url; }}
-                  title={b.title}
-                >
-                  <span className="newtab-highlight-icon">★</span>
-                  <span className="newtab-highlight-label">{b.title}</span>
-                </button>
-              ))}
+          )}
+          {bookmarks.length > 0 && (
+            <div className="newtab-highlight-card">
+              <div className="newtab-highlight-title">Bookmarks</div>
+              <div className="newtab-highlight-grid">
+                {bookmarks.map(b => (
+                  <button
+                    key={b.id}
+                    type="button"
+                    className="newtab-highlight-item"
+                    onClick={() => { window.location.href = b.url; }}
+                    title={b.title}
+                  >
+                    <span className="newtab-highlight-icon">★</span>
+                    <span className="newtab-highlight-label">{b.title}</span>
+                  </button>
+                ))}
+              </div>
             </div>
-          </div>
-        )}
-      </div>
+          )}
+          {pinnedTabs.length > 0 && (
+            <div className="newtab-highlight-card">
+              <div className="newtab-highlight-title">Pinned Tabs</div>
+              <div className="newtab-highlight-grid">
+                {pinnedTabs.map(t => (
+                  <button
+                    key={t.id}
+                    type="button"
+                    className="newtab-highlight-item"
+                    onClick={() => {
+                      chrome.tabs.update(t.id, { active: true });
+                      chrome.tabs.get(t.id).then(tab => chrome.windows.update(tab.windowId!, { focused: true })).catch(() => {});
+                    }}
+                    title={t.title}
+                  >
+                    {t.favIconUrl ? (
+                      <img src={t.favIconUrl} alt="" className="newtab-highlight-favicon" />
+                    ) : (
+                      <span className="newtab-highlight-icon">◉</span>
+                    )}
+                    <span className="newtab-highlight-label">{t.title}</span>
+                  </button>
+                ))}
+              </div>
+            </div>
+          )}
+        </div>
       )}
 
       <p className="newtab-footer">⌘K to focus · ⌘ Enter · Esc</p>
