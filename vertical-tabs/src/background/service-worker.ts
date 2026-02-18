@@ -5,11 +5,15 @@ import type { ExtendedTab } from '@/types';
 
 console.log('[ServiceWorker] Loading...');
 
+const DEFAULT_SPACE_ID = 'default';
+
 // ============================================
 // Initialize Core Systems
 // ============================================
 const tabEngine = getTabEngine();
 const stateManager = getStateManager();
+let hasRegisteredSpaceListeners = false;
+let uiActiveSpaceId: string = DEFAULT_SPACE_ID;
 
 // ============================================
 // Tab Inactivity Tracking
@@ -108,6 +112,26 @@ async function initialize(): Promise<void> {
       spaces: stateManager.getSpaces(),
     });
   });
+
+  if (!hasRegisteredSpaceListeners) {
+    chrome.tabs.onCreated.addListener((tab) => {
+      if (tab.id === undefined) return;
+      const metadata = stateManager.getTabMetadata();
+      if (metadata[tab.id]?.spaceId) return;
+
+      const targetSpaceId = uiActiveSpaceId === 'all' ? DEFAULT_SPACE_ID : uiActiveSpaceId;
+      const assignedSpaceId = stateManager.assignTabToSpace(tab.id, targetSpaceId);
+      tabEngine.updateTabMetadata(tab.id, { spaceId: assignedSpaceId });
+      const updatedTab = tabEngine.getTab(tab.id);
+      if (updatedTab) {
+        broadcastMessage({
+          type: 'TAB_UPDATED',
+          tab: { ...updatedTab, spaceId: assignedSpaceId },
+        });
+      }
+    });
+    hasRegisteredSpaceListeners = true;
+  }
 
   console.log('[ServiceWorker] Initialized');
 }
@@ -323,26 +347,55 @@ async function handleMessage(
 
       // ========== Space Actions ==========
       case 'ASSIGN_TAB_TO_SPACE': {
-        stateManager.assignTabToSpace(message.tabId, message.spaceId);
-        tabEngine.updateTabMetadata(message.tabId, { spaceId: message.spaceId });
+        const assignedSpaceId = stateManager.assignTabToSpace(message.tabId, message.spaceId);
+        tabEngine.updateTabMetadata(message.tabId, { spaceId: assignedSpaceId });
+        const updatedTab = tabEngine.getTab(message.tabId);
+        if (updatedTab) {
+          broadcastMessage({
+            type: 'TAB_UPDATED',
+            tab: { ...updatedTab, spaceId: assignedSpaceId },
+          });
+        }
         sendResponse({ success: true });
         break;
       }
 
       case 'CREATE_SPACE': {
-        const space = stateManager.addSpace(message.name, message.color);
+        const space = stateManager.addSpace(message.name, message.color, message.icon);
         sendResponse({ success: true, space });
         break;
       }
 
       case 'DELETE_SPACE': {
-        stateManager.removeSpace(message.spaceId);
+        const movedTabIds = stateManager.removeSpace(message.spaceId);
+        for (const tabId of movedTabIds) {
+          tabEngine.updateTabMetadata(tabId, { spaceId: DEFAULT_SPACE_ID });
+          const updatedTab = tabEngine.getTab(tabId);
+          if (updatedTab) {
+            broadcastMessage({
+              type: 'TAB_UPDATED',
+              tab: { ...updatedTab, spaceId: DEFAULT_SPACE_ID },
+            });
+          }
+        }
         sendResponse({ success: true });
         break;
       }
 
       case 'RENAME_SPACE': {
         stateManager.renameSpace(message.spaceId, message.name);
+        sendResponse({ success: true });
+        break;
+      }
+
+      case 'UPDATE_SPACE': {
+        stateManager.updateSpace(message.spaceId, message.updates);
+        sendResponse({ success: true });
+        break;
+      }
+
+      case 'SET_ACTIVE_SPACE': {
+        uiActiveSpaceId = message.spaceId;
         sendResponse({ success: true });
         break;
       }

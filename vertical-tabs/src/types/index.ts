@@ -12,6 +12,12 @@ export interface ExtendedWindow {
   tabIds: number[];
 }
 
+export interface SpaceRule {
+  type: 'domain' | 'keyword' | 'regex';
+  pattern: string;
+  priority: number;
+}
+
 // Space/Workspace
 export interface Space {
   id: string;
@@ -19,7 +25,9 @@ export interface Space {
   color: string;
   icon?: string;
   tabIds: number[];
+  rules: SpaceRule[];
   createdAt: number;
+  lastAccessedAt: number;
 }
 
 // Core state managed by TabEngine

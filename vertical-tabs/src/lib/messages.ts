@@ -21,9 +21,15 @@ export type UIMessage =
   | { type: 'MUTE_TAB'; tabId: number; muted: boolean }
   // Space actions
   | { type: 'ASSIGN_TAB_TO_SPACE'; tabId: number; spaceId: string }
-  | { type: 'CREATE_SPACE'; name: string; color: string }
+  | { type: 'CREATE_SPACE'; name: string; color: string; icon?: string }
   | { type: 'DELETE_SPACE'; spaceId: string }
-  | { type: 'RENAME_SPACE'; spaceId: string; name: string };
+  | { type: 'RENAME_SPACE'; spaceId: string; name: string }
+  | {
+    type: 'UPDATE_SPACE';
+    spaceId: string;
+    updates: { name?: string; color?: string; icon?: string; rules?: Space['rules']; lastAccessedAt?: number };
+  }
+  | { type: 'SET_ACTIVE_SPACE'; spaceId: string };
 
 // ============================================
 // Messages from Service Worker to UI
