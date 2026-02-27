@@ -7,6 +7,24 @@ import ContextMenu from './ContextMenu';
 
 const DEFAULT_SPACE_ID = 'default';
 const ALL_TABS_ID = 'all';
+const STALE_PROMPT_PREVIEW = false;
+const STALE_TAB_THRESHOLD_HOURS = 6;
+const STALE_GROUP_WINDOW_HOURS = 6;
+
+interface StaleTabGroup {
+  key: string;
+  bucketStart: number;
+  tabs: ExtendedTab[];
+  latestLastActiveAt: number;
+}
+
+function formatInactiveAge(hours: number): string {
+  if (hours < 24) {
+    return `${Math.round(hours)}h`;
+  }
+  const days = Math.round(hours / 24);
+  return `${days}d`;
+}
 
 const SPACE_COLORS = [
   '#FFB3BA', '#FFDFBA', '#FFFFBA', '#BAFFC9', '#BAE1FF',
@@ -116,6 +134,9 @@ export default function App() {
   const [dragOverSpaceId, setDragOverSpaceId] = useState<string | null>(null);
   const [dragGhostPos, setDragGhostPos] = useState<{ x: number; y: number } | null>(null);
   const [emojiPickerOpen, setEmojiPickerOpen] = useState(false);
+  const [dismissedStaleGroupKeys, setDismissedStaleGroupKeys] = useState<Set<string>>(new Set());
+  const [stalePromptIndexBySpace, setStalePromptIndexBySpace] = useState<Record<string, number>>({});
+  const [expandedStaleGroupKeys, setExpandedStaleGroupKeys] = useState<Set<string>>(new Set());
   const scrollContainerRef = useRef<HTMLDivElement>(null);
   const autoScrollIntervalRef = useRef<ReturnType<typeof setInterval> | null>(null);
   const emojiPickerRef = useRef<HTMLDivElement>(null);
@@ -742,6 +763,133 @@ export default function App() {
     return result;
   }, [tabs, searchQuery, spaceIds, currentWindowId]);
 
+  const staleGroupsPerSpace = useMemo(() => {
+    const now = Date.now();
+    const staleCutoff = STALE_PROMPT_PREVIEW
+      ? now
+      : now - STALE_TAB_THRESHOLD_HOURS * 60 * 60 * 1000;
+    const groupWindowMs = STALE_GROUP_WINDOW_HOURS * 60 * 60 * 1000;
+
+    const result: Record<string, StaleTabGroup[]> = {};
+
+    for (const spaceId of spaceIds) {
+      const spaceTabs = spaceId === ALL_TABS_ID
+        ? tabs
+        : tabs.filter(tab => (tab.spaceId ?? DEFAULT_SPACE_ID) === spaceId);
+
+      const groups = new Map<string, StaleTabGroup>();
+
+      for (const tab of spaceTabs) {
+        if (!tab.id || tab.id === activeTabId) continue;
+
+        const lastActiveAt = tab.lastActiveAt ?? tab.lastAccessed;
+        if (!lastActiveAt || lastActiveAt > staleCutoff) continue;
+
+        const bucketStart = Math.floor(lastActiveAt / groupWindowMs) * groupWindowMs;
+        const key = `${spaceId}:${bucketStart}`;
+
+        const existing = groups.get(key);
+        if (existing) {
+          existing.tabs.push(tab);
+          existing.latestLastActiveAt = Math.max(existing.latestLastActiveAt, lastActiveAt);
+        } else {
+          groups.set(key, {
+            key,
+            bucketStart,
+            tabs: [tab],
+            latestLastActiveAt: lastActiveAt,
+          });
+        }
+      }
+
+      result[spaceId] = Array.from(groups.values())
+        .sort((a, b) => a.latestLastActiveAt - b.latestLastActiveAt);
+    }
+
+    return result;
+  }, [tabs, spaceIds, activeTabId]);
+
+  useEffect(() => {
+    const activeKeys = new Set(
+      Object.values(staleGroupsPerSpace)
+        .flat()
+        .map(group => group.key)
+    );
+
+    setDismissedStaleGroupKeys(prev => {
+      const next = new Set<string>();
+      for (const key of prev) {
+        if (activeKeys.has(key)) {
+          next.add(key);
+        }
+      }
+      return next;
+    });
+  }, [staleGroupsPerSpace]);
+
+  useEffect(() => {
+    setStalePromptIndexBySpace(prev => {
+      const next: Record<string, number> = {};
+      for (const spaceId of spaceIds) {
+        const visibleCount = (staleGroupsPerSpace[spaceId] ?? [])
+          .filter(group => !dismissedStaleGroupKeys.has(group.key))
+          .length;
+        const maxIndex = Math.max(0, visibleCount - 1);
+        next[spaceId] = Math.min(prev[spaceId] ?? 0, maxIndex);
+      }
+      return next;
+    });
+  }, [staleGroupsPerSpace, dismissedStaleGroupKeys, spaceIds]);
+
+  const handleStalePromptPrev = useCallback((spaceId: string) => {
+    setStalePromptIndexBySpace(prev => ({
+      ...prev,
+      [spaceId]: Math.max(0, (prev[spaceId] ?? 0) - 1),
+    }));
+  }, []);
+
+  const handleStalePromptNext = useCallback((spaceId: string, count: number) => {
+    setStalePromptIndexBySpace(prev => ({
+      ...prev,
+      [spaceId]: Math.min(Math.max(0, count - 1), (prev[spaceId] ?? 0) + 1),
+    }));
+  }, []);
+
+  const handleDismissStaleGroup = useCallback((groupKey: string) => {
+    setDismissedStaleGroupKeys(prev => {
+      const next = new Set(prev);
+      next.add(groupKey);
+      return next;
+    });
+  }, []);
+
+  const handleCloseStaleGroup = useCallback((group: StaleTabGroup) => {
+    const tabIds = group.tabs
+      .map(tab => tab.id)
+      .filter((tabId): tabId is number => typeof tabId === 'number');
+
+    if (tabIds.length === 0) return;
+
+    sendMessage({ type: 'CLOSE_TABS', tabIds });
+    setDismissedStaleGroupKeys(prev => {
+      const next = new Set(prev);
+      next.add(group.key);
+      return next;
+    });
+  }, []);
+
+  const handleToggleStaleGroupExpanded = useCallback((groupKey: string, expanded: boolean) => {
+    setExpandedStaleGroupKeys(prev => {
+      const next = new Set(prev);
+      if (expanded) {
+        next.add(groupKey);
+      } else {
+        next.delete(groupKey);
+      }
+      return next;
+    });
+  }, []);
+
   if (isLoading) {
     return (
       <div style={{
@@ -795,6 +943,9 @@ export default function App() {
         >
           {spaceIds.map((spaceId) => {
             const { pinned, regular, variant } = tabsPerSpace[spaceId] ?? { pinned: [], regular: [], variant: 'single' };
+            const staleGroups = (staleGroupsPerSpace[spaceId] ?? [])
+              .filter(group => !dismissedStaleGroupKeys.has(group.key));
+            const stalePromptIndex = Math.min(stalePromptIndexBySpace[spaceId] ?? 0, Math.max(0, staleGroups.length - 1));
             const isActive = spaceId === activeSpaceId;
             return (
               <div
@@ -811,6 +962,138 @@ export default function App() {
                 }}
               >
                 <div style={{ padding: '8px 0', boxSizing: 'border-box' }}>
+                  {staleGroups.length > 0 && (
+                    <div className="stale-prompts">
+                      {staleGroups.length > 1 && (
+                        <button
+                          type="button"
+                          className="stale-prompt-nav"
+                          aria-label="Previous notification"
+                          onClick={() => {
+                            setExpandedStaleGroupKeys(prev => {
+                              const next = new Set(prev);
+                              for (const staleGroup of staleGroups) {
+                                next.delete(staleGroup.key);
+                              }
+                              return next;
+                            });
+                            handleStalePromptPrev(spaceId);
+                          }}
+                          disabled={stalePromptIndex === 0}
+                        >
+                          ‹
+                        </button>
+                      )}
+
+                      <div className="stale-prompts-viewport">
+                        <div
+                          className="stale-prompts-track"
+                          style={{ transform: `translateX(-${stalePromptIndex * 100}%)` }}
+                        >
+                          {staleGroups.map(group => {
+                            const ageHours = (Date.now() - group.latestLastActiveAt) / (1000 * 60 * 60);
+                            const sampleTitles = group.tabs
+                              .slice(0, 2)
+                              .map(tab => tab.title || tab.url || 'Untitled tab')
+                              .join(', ');
+                            const allTitles = group.tabs
+                              .map(tab => tab.title || tab.url || 'Untitled tab');
+                            const isExpanded = expandedStaleGroupKeys.has(group.key);
+
+                            return (
+                              <div key={group.key} className="stale-prompts-slide">
+                                <div
+                                  className={`stale-prompt-card${group.tabs.length > 1 ? ' stale-prompt-card--clickable' : ''}`}
+                                  role={group.tabs.length > 1 ? 'button' : undefined}
+                                  tabIndex={group.tabs.length > 1 ? 0 : undefined}
+                                  onClick={() => {
+                                    if (group.tabs.length <= 1) return;
+                                    handleToggleStaleGroupExpanded(group.key, !isExpanded);
+                                  }}
+                                  onKeyDown={(event) => {
+                                    if (group.tabs.length <= 1) return;
+                                    if (event.key === 'Enter' || event.key === ' ') {
+                                      event.preventDefault();
+                                      handleToggleStaleGroupExpanded(group.key, !isExpanded);
+                                    }
+                                  }}
+                                >
+                                  <div className="stale-prompt-card__top">
+                                    <div className="stale-prompt-card__text">
+                                      <div className="stale-prompt-card__title">
+                                        {group.tabs.length} inactive tab{group.tabs.length !== 1 ? 's' : ''} (~{formatInactiveAge(ageHours)})
+                                      </div>
+                                      {!isExpanded && (
+                                        <div className="stale-prompt-card__subtitle">
+                                          {sampleTitles}{group.tabs.length > 2 ? ', ...' : ''}
+                                        </div>
+                                      )}
+                                    </div>
+                                    <div className="stale-prompt-card__actions">
+                                      <button
+                                        type="button"
+                                        className="stale-prompt-btn stale-prompt-btn--secondary"
+                                        onClick={(event) => {
+                                          event.stopPropagation();
+                                          handleDismissStaleGroup(group.key);
+                                        }}
+                                      >
+                                        Dismiss
+                                      </button>
+                                      <button
+                                        type="button"
+                                        className="stale-prompt-btn stale-prompt-btn--danger"
+                                        onClick={(event) => {
+                                          event.stopPropagation();
+                                          handleCloseStaleGroup(group);
+                                        }}
+                                      >
+                                        Close ({group.tabs.length})
+                                      </button>
+                                    </div>
+                                  </div>
+
+                                  {group.tabs.length > 1 && (
+                                    <div className="stale-prompt-list" hidden={!isExpanded}>
+                                      <ul className="stale-prompt-list__items">
+                                        {allTitles.map((title, index) => (
+                                          <li key={`${group.key}-${index}`} className="stale-prompt-list__item" title={title}>
+                                            {title}
+                                          </li>
+                                        ))}
+                                      </ul>
+                                    </div>
+                                  )}
+                                </div>
+                              </div>
+                            );
+                          })}
+                        </div>
+                      </div>
+
+                      {staleGroups.length > 1 && (
+                        <button
+                          type="button"
+                          className="stale-prompt-nav"
+                          aria-label="Next notification"
+                          onClick={() => {
+                            setExpandedStaleGroupKeys(prev => {
+                              const next = new Set(prev);
+                              for (const staleGroup of staleGroups) {
+                                next.delete(staleGroup.key);
+                              }
+                              return next;
+                            });
+                            handleStalePromptNext(spaceId, staleGroups.length);
+                          }}
+                          disabled={stalePromptIndex >= staleGroups.length - 1}
+                        >
+                          ›
+                        </button>
+                      )}
+                    </div>
+                  )}
+
                   {/* Pinned tabs */}
                   {pinned.length > 0 && (
                     <div

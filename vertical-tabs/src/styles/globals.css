@@ -283,9 +283,286 @@ body {
   line-height: 1.5;
 }
 
+/* Dusty tabs */
+.tab-item--dusty {
+  position: relative;
+  overflow: hidden;
+}
+
+/* ---------------------------
+   1) Settled dust (bottom)
+--------------------------- */
+.tab-dust-settled {
+  position: absolute;
+  left: 56px;
+  right: 12px;
+  bottom: 6px;
+  height: 18px;
+  pointer-events: none;
+  opacity: 0.5;
+  filter: blur(0.25px);
+  background:
+    radial-gradient(circle at 3% 82%, rgba(255,255,255,0.28) 0 0.9px, transparent 1.6px),
+    radial-gradient(circle at 8% 70%, rgba(255,255,255,0.35) 0 1.2px, transparent 2px),
+    radial-gradient(circle at 15% 90%, rgba(255,255,255,0.22) 0 0.8px, transparent 1.5px),
+    radial-gradient(circle at 22% 76%, rgba(255,255,255,0.3) 0 1px, transparent 1.8px),
+    radial-gradient(circle at 30% 88%, rgba(255,255,255,0.26) 0 0.9px, transparent 1.6px),
+    radial-gradient(circle at 45% 94%, rgba(255,255,255,0.24) 0 0.8px, transparent 1.5px),
+    radial-gradient(circle at 53% 80%, rgba(255,255,255,0.29) 0 1px, transparent 1.8px),
+    radial-gradient(circle at 60% 90%, rgba(255,255,255,0.23) 0 0.8px, transparent 1.5px),
+    radial-gradient(circle at 75% 92%, rgba(255,255,255,0.25) 0 0.9px, transparent 1.6px),
+    radial-gradient(circle at 82% 78%, rgba(255,255,255,0.33) 0 1.2px, transparent 2px),
+    radial-gradient(circle at 89% 86%, rgba(255,255,255,0.22) 0 0.8px, transparent 1.5px),
+    radial-gradient(circle at 95% 72%, rgba(255,255,255,0.28) 0 1px, transparent 1.8px);
+  animation: dust-settle-wobble 6.8s ease-in-out infinite;
+  will-change: transform, opacity;
+}
+
+/* optional: thicker pile look via gradient haze */
+.tab-dust-settled::after {
+  content: '';
+  position: absolute;
+  inset: 0;
+  background: linear-gradient(to top, rgba(255,255,255,0.10), transparent 90%);
+  opacity: 0.3;
+}
+
+/* ---------------------------
+   2) Falling dust (top->bottom)
+--------------------------- */
+.tab-dust-fall {
+  position: absolute;
+  left: 56px;
+  right: 12px;
+  top: 6px;
+  bottom: 6px;
+  pointer-events: none;
+  overflow: hidden;
+}
+
+/* Layer 1 */
+.tab-dust-fall::before {
+  content: '';
+  position: absolute;
+  left: -8%;
+  right: -8%;
+  top: -22px;
+  height: 140%;
+  opacity: 0;
+  background:
+    radial-gradient(circle at 8% 12%, rgba(255,255,255,0.26) 0 1px, transparent 1.7px),
+    radial-gradient(circle at 21% 4%, rgba(255,255,255,0.22) 0 1px, transparent 1.7px),
+    radial-gradient(circle at 35% 14%, rgba(255,255,255,0.24) 0 1px, transparent 1.7px),
+    radial-gradient(circle at 52% 6%, rgba(255,255,255,0.23) 0 1px, transparent 1.7px),
+    radial-gradient(circle at 68% 16%, rgba(255,255,255,0.24) 0 1px, transparent 1.7px),
+    radial-gradient(circle at 83% 8%, rgba(255,255,255,0.22) 0 1px, transparent 1.7px),
+    radial-gradient(circle at 94% 14%, rgba(255,255,255,0.25) 0 1px, transparent 1.7px);
+  animation: dust-fall-1 4.9s linear infinite;
+  animation-delay: -1.6s;
+}
+
+/* Layer 2 */
+.tab-dust-fall::after {
+  content: '';
+  position: absolute;
+  left: -10%;
+  right: -10%;
+  top: -30px;
+  height: 150%;
+  opacity: 0;
+  background:
+    radial-gradient(circle at 12% 10%, rgba(255,255,255,0.20) 0 1px, transparent 1.7px),
+    radial-gradient(circle at 29% 6%, rgba(255,255,255,0.22) 0 1px, transparent 1.7px),
+    radial-gradient(circle at 48% 15%, rgba(255,255,255,0.19) 0 1px, transparent 1.7px),
+    radial-gradient(circle at 66% 7%, rgba(255,255,255,0.21) 0 1px, transparent 1.7px),
+    radial-gradient(circle at 88% 13%, rgba(255,255,255,0.20) 0 1px, transparent 1.7px);
+  animation: dust-fall-2 6.3s linear infinite;
+  animation-delay: -3.2s;
+}
+
+/* ---------------------------
+   Keyframes
+--------------------------- */
+
+/* settled dust should subtly “breathe” */
+@keyframes dust-settle-wobble {
+  0%   { transform: translateY(0);     opacity: 0.5; }
+  40%  { transform: translateY(0.5px); opacity: 0.62; }
+  70%  { transform: translateY(0.2px); opacity: 0.56; }
+  100% { transform: translateY(0);     opacity: 0.5; }
+}
+
+/* Fall layer 1: visible mid-fall, lands at bottom before fading */
+@keyframes dust-fall-1 {
+  0%   { transform: translate(0px, -18px); opacity: 0; }
+  10%  { opacity: 0.55; }
+  65%  { transform: translate(10px, 44px); opacity: 0.48; }
+  90%  { transform: translate(-6px, 74px); opacity: 0.52; }
+  100% { transform: translate(2px, 86px); opacity: 0; }
+}
+
+/* Fall layer 2: different drift path + timing */
+@keyframes dust-fall-2 {
+  0%   { transform: translate(0px, -24px); opacity: 0; }
+  12%  { opacity: 0.5; }
+  50%  { transform: translate(-12px, 38px); opacity: 0.44; }
+  82%  { transform: translate(8px, 78px); opacity: 0.5; }
+  100% { transform: translate(-3px, 92px); opacity: 0; }
+}
+
+/* adjust for elongated/single where icon shifts left */
+.tab-item-elongated.tab-item--dusty .tab-dust-settled,
+.tab-item-single.tab-item--dusty .tab-dust-settled,
+.tab-item-elongated.tab-item--dusty .tab-dust-fall,
+.tab-item-single.tab-item--dusty .tab-dust-fall {
+  left: 38px;
+}
+
 .tab-item-compact .tab-title,
 .tab-item-minimal .tab-title {
   display: none;
+}
+
+.stale-prompts {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  padding: 0 8px;
+  margin-bottom: 12px;
+}
+
+.stale-prompts-viewport {
+  flex: 1;
+  overflow: hidden;
+  min-width: 0;
+}
+
+.stale-prompts-track {
+  display: flex;
+  transition: transform 0.2s ease;
+  width: 100%;
+}
+
+.stale-prompts-slide {
+  min-width: 100%;
+}
+
+.stale-prompt-nav {
+  width: 26px;
+  height: 26px;
+  border-radius: 999px;
+  border: 1px solid rgba(148, 163, 184, 0.4);
+  background: rgba(71, 85, 105, 0.35);
+  color: #e5e7eb;
+  font-size: 13px;
+  line-height: 1;
+  cursor: pointer;
+  flex-shrink: 0;
+}
+
+.stale-prompt-nav:disabled {
+  opacity: 0.35;
+  cursor: default;
+}
+
+.stale-prompt-card {
+  display: flex;
+  flex-direction: column;
+  align-items: flex-start;
+  gap: 10px;
+  padding: 10px;
+  border-radius: 8px;
+  background: rgba(71, 85, 105, 0.25);
+  border: 1px solid rgba(148, 163, 184, 0.35);
+}
+
+.stale-prompt-card--clickable {
+  cursor: pointer;
+}
+
+.stale-prompt-card--clickable:hover {
+  background: rgba(71, 85, 105, 0.32);
+}
+
+.stale-prompt-card__top {
+  width: 100%;
+  display: flex;
+  align-items: flex-start;
+  justify-content: space-between;
+  gap: 10px;
+}
+
+.stale-prompt-card__text {
+  flex: 1;
+  min-width: 0;
+}
+
+.stale-prompt-card__title {
+  color: #e5e7eb;
+  font-size: 12px;
+  font-weight: 600;
+}
+
+.stale-prompt-card__subtitle {
+  color: #cbd5e1;
+  font-size: 11px;
+  margin-top: 2px;
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+
+.stale-prompt-list {
+  margin-top: 4px;
+  width: 100%;
+}
+
+.stale-prompt-list__items {
+  margin-top: 4px;
+  padding-left: 16px;
+  max-height: 92px;
+  overflow-y: auto;
+}
+
+.stale-prompt-list__item {
+  color: #e2e8f0;
+  font-size: 11px;
+  line-height: 1.4;
+  white-space: normal;
+  word-break: break-word;
+}
+
+.stale-prompt-card__actions {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  flex-shrink: 0;
+  margin-top: 0;
+}
+
+.stale-prompt-btn {
+  border: none;
+  border-radius: 6px;
+  padding: 5px 8px;
+  font-size: 11px;
+  cursor: pointer;
+  color: #e5e7eb;
+}
+
+.stale-prompt-btn--secondary {
+  background: rgba(100, 116, 139, 0.45);
+}
+
+.stale-prompt-btn--secondary:hover {
+  background: rgba(100, 116, 139, 0.6);
+}
+
+.stale-prompt-btn--danger {
+  background: rgba(220, 38, 38, 0.5);
+}
+
+.stale-prompt-btn--danger:hover {
+  background: rgba(220, 38, 38, 0.7);
 }
 
 .tab-close {

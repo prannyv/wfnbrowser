@@ -56,7 +56,7 @@ class TabEngine {
 
           const extendedTab: ExtendedTab = {
             ...tab,
-            lastActiveAt: tab.active ? Date.now() : undefined,
+            lastActiveAt: tab.lastAccessed ?? (tab.active ? Date.now() : undefined),
           };
 
           this.state.tabs.set(tab.id, extendedTab);
@@ -233,7 +233,7 @@ class TabEngine {
     const existingTab = this.state.tabs.get(tabId);
     const extendedTab: ExtendedTab = {
       ...tab,
-      lastActiveAt: existingTab?.lastActiveAt,
+      lastActiveAt: existingTab?.lastActiveAt ?? tab.lastAccessed,
       spaceId: existingTab?.spaceId,
     };
 
