@@ -1,4 +1,6 @@
 import { useEffect, useState, useCallback, useMemo, useRef } from 'react';
+import Fuse from 'fuse.js';
+import type { FuseResultMatch } from 'fuse.js';
 import type React from 'react';
 import type { ExtendedTab, Space } from '@/types';
 import { sendMessage, onMessage } from '@/lib/messages';
