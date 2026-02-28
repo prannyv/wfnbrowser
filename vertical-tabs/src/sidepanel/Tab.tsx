@@ -2,11 +2,15 @@ import { memo, useState, useRef, useLayoutEffect } from 'react';
 import type React from 'react';
 import type { ExtendedTab } from '@/types';
 
+import type { FuseResultMatch } from 'fuse.js';
+
 type TabVariant = 'default' | 'compact' | 'minimal' | 'elongated' | 'single';
 
 interface TabProps {
   tab: ExtendedTab;
   isActive: boolean;
+  matches?: readonly FuseResultMatch[];
+  searchHighlightQuery?: string;
   variant?: TabVariant;
   fullWidth?: boolean;
   onClick: () => void;
@@ -16,17 +20,62 @@ interface TabProps {
   onDragEnd?: (e: React.DragEvent) => void;
 }
 
-const Tab = memo(function Tab({
-  tab,
-  isActive,
-  variant = 'default',
-  fullWidth = false,
-  onClick,
-  onClose,
-  onContextMenu,
-  onDragStart,
-  onDragEnd,
-}: TabProps) {
+const HighlightedText = ({ text, matches, query }: { text: string; matches?: readonly FuseResultMatch[]; query?: string }) => {
+  if (query) {
+    const escapedQuery = query.replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
+    const regex = new RegExp(`(${escapedQuery})`, 'gi');
+    const parts = text.split(regex);
+
+    return (
+      <>
+        {parts.map((part, i) =>
+          regex.test(part) ? (
+            <span key={i} className="highlight">{part}</span>
+          ) : (
+            part
+          )
+        )}
+      </>
+    );
+  }
+
+  if (!matches || matches.length === 0) return <>{text}</>;
+
+  // Sort matches by start index
+  const sortedMatches = [...matches].sort((a, b) => a.indices[0][0] - b.indices[0][0]);
+
+  const result: React.ReactNode[] = [];
+  let lastIndex = 0;
+
+  // For simplicity, we just handle the first set of indices for the first match that hits this text
+  // Fuse matches can be complex, but for title/url search, this is usually enough
+  const match = sortedMatches[0];
+
+  for (const [start, end] of match.indices) {
+    // Add text before match
+    if (start > lastIndex) {
+      result.push(text.slice(lastIndex, start));
+    }
+    // Add highlighted match
+    result.push(
+      <span key={`${start}-${end}`} className="highlight">
+        {text.slice(start, end + 1)}
+      </span>
+    );
+    lastIndex = end + 1;
+  }
+
+  // Add remaining text
+  if (lastIndex < text.length) {
+    result.push(text.slice(lastIndex));
+  }
+
+  return <>{result}</>;
+};
+
+// Memoized Tab component - only re-renders when props actually change
+const Tab = memo(function Tab({ tab, isActive, matches, searchHighlightQuery, variant, fullWidth, onClick, onClose, onContextMenu, onDragStart, onDragEnd }: TabProps) {
+  // Track image error and loading state
   const [imgError, setImgError] = useState(false);
   const [imgLoaded, setImgLoaded] = useState(false);
   const imgRef = useRef<HTMLImageElement>(null);
@@ -125,8 +174,12 @@ const Tab = memo(function Tab({
               src={tab.favIconUrl}
               alt=""
               key={tab.favIconUrl}
-              onError={() => setImgError(true)}
-              onLoad={() => setImgLoaded(true)}
+              onError={() => {
+                setImgError(true);
+              }}
+              onLoad={() => {
+                setImgLoaded(true);
+              }}
               style={{
                 display: imgLoaded ? 'block' : 'none',
                 width: iconSize,
@@ -150,7 +203,11 @@ const Tab = memo(function Tab({
             transition: 'opacity 0.2s ease',
           }}
         >
-          {tab.title || 'New Tab'}
+          <HighlightedText
+          text={tab.title || 'New Tab'}
+          matches={matches?.filter(m => m.key === 'title')}
+          query={searchHighlightQuery}
+        />
         </span>
       )}
 
@@ -179,7 +236,9 @@ const Tab = memo(function Tab({
     prev.tab.favIconUrl === next.tab.favIconUrl &&
     prev.tab.pinned === next.tab.pinned &&
     prev.tab.url === next.tab.url &&
-    prev.tab.lastActiveAt === next.tab.lastActiveAt
+    prev.tab.lastActiveAt === next.tab.lastActiveAt &&
+    prev.searchHighlightQuery === next.searchHighlightQuery &&
+    JSON.stringify(prev.matches) === JSON.stringify(next.matches)
   );
 });
 

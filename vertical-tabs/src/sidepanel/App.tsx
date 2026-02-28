@@ -1,4 +1,6 @@
 import { useEffect, useState, useCallback, useMemo, useRef } from 'react';
+import Fuse from 'fuse.js';
+import type { FuseResultMatch } from 'fuse.js';
 import type React from 'react';
 import type { ExtendedTab, Space } from '@/types';
 import { sendMessage, onMessage } from '@/lib/messages';
@@ -742,6 +744,17 @@ export default function App() {
     return result;
   }, [tabs, searchQuery, spaceIds, currentWindowId]);
 
+  const handleKeyDown = useCallback((e: React.KeyboardEvent<HTMLInputElement>) => {
+    if (e.key === 'Enter') {
+      const current = tabsPerSpace[activeSpaceId];
+      const firstTab = current?.pinned[0] || current?.regular[0];
+      if (firstTab) {
+        handleTabClick(firstTab);
+        setSearchQuery('');
+      }
+    }
+  }, [tabsPerSpace, activeSpaceId, handleTabClick, setSearchQuery]);
+
   if (isLoading) {
     return (
       <div style={{
@@ -765,13 +778,80 @@ export default function App() {
     <div
       ref={rootRef}
       className={`sidepanel-root${isClosing ? ' sidepanel-root--closing' : ''}`}
-      style={{ display: 'flex', flexDirection: 'column', height: '100%', overflow: 'hidden', backgroundColor: theme.bg, transition: 'background-color 0.25s ease' }}
+      style={{ display: 'flex', flexDirection: 'column', height: '100%' }}
       onTouchStart={handleTouchStart}
       onTouchMove={handleTouchMove}
       onTouchEnd={handleTouchEnd}
       onTouchCancel={handleTouchCancel}
     >
-      {/* Tab list - carousel with swipe */}
+      {/* Search */}
+      <div style={{ padding: '12px', borderBottom: '1px solid #333' }}>
+        <div style={{ position: 'relative', width: '100%' }}>
+          <input
+            type="text"
+            placeholder="Search tabs..."
+            value={searchQuery}
+            onChange={(e) => setSearchQuery(e.target.value)}
+            onKeyDown={handleKeyDown}
+            style={{
+              width: '100%',
+              padding: '8px 32px 8px 12px',
+              backgroundColor: '#2a2a2a',
+              borderRadius: '8px',
+              fontSize: '14px',
+              color: '#e5e5e5',
+              border: 'none',
+              outline: 'none',
+            }}
+          />
+          {searchQuery && (
+            <button
+              onClick={() => setSearchQuery('')}
+              style={{
+                position: 'absolute',
+                right: '8px',
+                top: '50%',
+                transform: 'translateY(-50%)',
+                background: 'none',
+                border: 'none',
+                cursor: 'pointer',
+                color: '#888',
+                padding: '4px',
+                display: 'flex',
+                alignItems: 'center',
+                justifyContent: 'center',
+                borderRadius: '4px',
+                transition: 'color 0.15s, background-color 0.15s',
+              }}
+              onMouseEnter={(e) => {
+                e.currentTarget.style.color = '#e5e5e5';
+                e.currentTarget.style.backgroundColor = 'rgba(255, 255, 255, 0.1)';
+              }}
+              onMouseLeave={(e) => {
+                e.currentTarget.style.color = '#888';
+                e.currentTarget.style.backgroundColor = 'transparent';
+              }}
+              title="Clear search"
+            >
+              <svg
+                width="14"
+                height="14"
+                viewBox="0 0 24 24"
+                fill="none"
+                stroke="currentColor"
+                strokeWidth="2.5"
+                strokeLinecap="round"
+                strokeLinejoin="round"
+              >
+                <line x1="18" y1="6" x2="6" y2="18"></line>
+                <line x1="6" y1="6" x2="18" y2="18"></line>
+              </svg>
+            </button>
+          )}
+        </div>
+      </div>
+
+      {/* Tab list - scrollable */}
       <div
         ref={carouselOuterRef}
         style={{
@@ -849,6 +929,7 @@ export default function App() {
                             key={tab.id}
                             tab={tab}
                             isActive={tab.id === activeTabId}
+                            searchHighlightQuery={searchQuery || undefined}
                             variant={variant as 'default' | 'compact' | 'minimal' | 'elongated' | 'single'}
                             onClick={() => handleTabClick(tab)}
                             onClose={(e) => tab.id && handleCloseTab(e, tab.id)}
@@ -890,6 +971,8 @@ export default function App() {
                         key={tab.id}
                         tab={tab}
                         isActive={tab.id === activeTabId}
+                        searchHighlightQuery={searchQuery || undefined}
+                        variant="default"
                         fullWidth
                         onClick={() => handleTabClick(tab)}
                         onClose={(e) => tab.id && handleCloseTab(e, tab.id)}
