@@ -746,13 +746,14 @@ export default function App() {
 
   const handleKeyDown = useCallback((e: React.KeyboardEvent<HTMLInputElement>) => {
     if (e.key === 'Enter') {
-      const firstTab = pinnedTabs[0] || regularTabs[0];
-      if (firstTab?.tab) {
-        handleTabClick(firstTab.tab);
+      const current = tabsPerSpace[activeSpaceId];
+      const firstTab = current?.pinned[0] || current?.regular[0];
+      if (firstTab) {
+        handleTabClick(firstTab);
         setSearchQuery('');
       }
     }
-  }, [pinnedTabs, regularTabs, handleTabClick, setSearchQuery]);
+  }, [tabsPerSpace, activeSpaceId, handleTabClick, setSearchQuery]);
 
   if (isLoading) {
     return (
@@ -778,6 +779,10 @@ export default function App() {
       ref={rootRef}
       className={`sidepanel-root${isClosing ? ' sidepanel-root--closing' : ''}`}
       style={{ display: 'flex', flexDirection: 'column', height: '100%' }}
+      onTouchStart={handleTouchStart}
+      onTouchMove={handleTouchMove}
+      onTouchEnd={handleTouchEnd}
+      onTouchCancel={handleTouchCancel}
     >
       {/* Search */}
       <div style={{ padding: '12px', borderBottom: '1px solid #333' }}>
@@ -924,6 +929,7 @@ export default function App() {
                             key={tab.id}
                             tab={tab}
                             isActive={tab.id === activeTabId}
+                            searchHighlightQuery={searchQuery || undefined}
                             variant={variant as 'default' | 'compact' | 'minimal' | 'elongated' | 'single'}
                             onClick={() => handleTabClick(tab)}
                             onClose={(e) => tab.id && handleCloseTab(e, tab.id)}
@@ -965,6 +971,8 @@ export default function App() {
                         key={tab.id}
                         tab={tab}
                         isActive={tab.id === activeTabId}
+                        searchHighlightQuery={searchQuery || undefined}
+                        variant="default"
                         fullWidth
                         onClick={() => handleTabClick(tab)}
                         onClose={(e) => tab.id && handleCloseTab(e, tab.id)}

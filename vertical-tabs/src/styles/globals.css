@@ -283,6 +283,12 @@ body {
   line-height: 1.5;
 }
 
+.tab-title .highlight {
+  color: #fbbf24;
+  background: rgba(251, 191, 36, 0.15);
+  border-radius: 2px;
+}
+
 .tab-item-compact .tab-title,
 .tab-item-minimal .tab-title {
   display: none;
