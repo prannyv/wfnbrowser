@@ -28,6 +28,8 @@ export interface Space {
   rules: SpaceRule[];
   createdAt: number;
   lastAccessedAt: number;
+  /** When true the auto-assigner will never move tabs into this space */
+  autoAssignDisabled?: boolean;
 }
 
 // Core state managed by TabEngine
@@ -65,11 +67,15 @@ export interface UserSettings {
   compactMode: boolean;
   autoAssignSpaces: boolean;
   staleTabThresholdDays: number;
+  /** Master switch — when false the assigner does nothing */
+  autoAssignEnabled: boolean;
+  /** Minimum score [0-1] required to auto-assign */
+  similarityThreshold: number;
 }
 
 // Persisted state shape
 export interface PersistedState {
   spaces: Space[];
   settings: UserSettings;
-  tabMetadata: Record<number, { spaceId?: string; lastActiveAt?: number; createdAt?: number; }>;
+  tabMetadata: Record<number, { spaceId?: string; lastActiveAt?: number; createdAt?: number; domain?: string; subdomains?: string[]; keywords?: string[]; autoAssigned?: boolean; }>;
 }

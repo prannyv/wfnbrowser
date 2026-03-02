@@ -1,4 +1,5 @@
-import type { ExtendedTab, SerializedTabState, Space } from '@/types';
+import type { ExtendedTab, SerializedTabState, Space, UserSettings } from '@/types';
+import type { TabAnalysis } from '@/lib/tab-analyzer';
 
 // ============================================
 // Messages from UI to Service Worker
@@ -29,7 +30,10 @@ export type UIMessage =
     spaceId: string;
     updates: { name?: string; color?: string; icon?: string; rules?: Space['rules']; lastAccessedAt?: number };
   }
-  | { type: 'SET_ACTIVE_SPACE'; spaceId: string };
+  | { type: 'SET_ACTIVE_SPACE'; spaceId: string }
+  // Settings
+  | { type: 'GET_SETTINGS' }
+  | { type: 'UPDATE_SETTINGS'; updates: Partial<UserSettings> };
 
 // ============================================
 // Messages from Service Worker to UI
@@ -50,7 +54,9 @@ export type BackgroundMessage =
   // Space updates
   | { type: 'SPACES_UPDATED'; spaces: Space[] }
   // Side panel UI events
-  | { type: 'SIDE_PANEL_CLOSING'; windowId: number };
+  | { type: 'SIDE_PANEL_CLOSING'; windowId: number }
+  // Tab analysis results
+  | { type: 'TAB_ANALYZED'; analysis: TabAnalysis };
 
 export type Message = UIMessage | BackgroundMessage;
 
@@ -82,7 +88,7 @@ function isBackgroundMessage(message: Message): message is BackgroundMessage {
   const bgTypes = [
     'STATE_SYNC', 'TAB_CREATED', 'TAB_REMOVED', 'TAB_UPDATED',
     'TAB_MOVED', 'TAB_ACTIVATED', 'WINDOW_CREATED', 'WINDOW_REMOVED',
-    'WINDOW_FOCUSED', 'SPACES_UPDATED', 'SIDE_PANEL_CLOSING'
+    'WINDOW_FOCUSED', 'SPACES_UPDATED', 'SIDE_PANEL_CLOSING', 'TAB_ANALYZED'
   ];
   return bgTypes.includes(message.type);
 }

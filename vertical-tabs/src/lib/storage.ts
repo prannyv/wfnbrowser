@@ -23,6 +23,8 @@ const DEFAULT_SETTINGS: UserSettings = {
   compactMode: false,
   autoAssignSpaces: true,
   staleTabThresholdDays: 7,
+  autoAssignEnabled: true,
+  similarityThreshold: 0.45,
 };
 
 const DEFAULT_SPACE: Space = {
@@ -117,7 +119,7 @@ export async function saveSpaces(spaces: Space[]): Promise<void> {
 // ============================================
 // Tab Metadata (persists across sessions)
 // ============================================
-export type TabMetadata = Record<number, { spaceId?: string; lastActiveAt?: number }>;
+export type TabMetadata = Record<number, { spaceId?: string; lastActiveAt?: number; domain?: string; subdomains?: string[]; keywords?: string[]; autoAssigned?: boolean }>;
 
 export async function loadTabMetadata(): Promise<TabMetadata> {
   const result = await chrome.storage.local.get(STORAGE_KEYS.TAB_METADATA);
@@ -247,7 +249,7 @@ export class StateManager {
   /**
    * Update metadata for a specific tab
    */
-  setTabMetadata(tabId: number, data: { spaceId?: string; lastActiveAt?: number }): void {
+  setTabMetadata(tabId: number, data: { spaceId?: string; lastActiveAt?: number; domain?: string; subdomains?: string[]; keywords?: string[]; autoAssigned?: boolean }): void {
     this.tabMetadata[tabId] = { ...this.tabMetadata[tabId], ...data };
     this.scheduleSave();
   }
