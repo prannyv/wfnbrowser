@@ -45,7 +45,8 @@ function buildIdf(spaces: SpaceCorpus[]): Map<string, number> {
 
     const idf = new Map<string, number>();
     for (const [term, count] of df) {
-        idf.set(term, Math.log(docCount / (1 + count)));
+        // +1 in numerator prevents negative IDF when docCount === 1
+        idf.set(term, Math.log((docCount + 1) / (1 + count)));
     }
     return idf;
 }
@@ -72,12 +73,12 @@ function keywordScore(
 }
 
 export function scoreSpaceMatch(
-    NewTab: TabFeatures,
+    newTab: TabFeatures,
     space: SpaceCorpus,
     idf: Map<string, number>
 ): number {
-    const d = domainScore(NewTab, space.tabs);
-    const k = keywordScore(NewTab, space, idf);
+    const d = domainScore(newTab, space.tabs);
+    const k = keywordScore(newTab, space, idf);
     return (d * 0.4) + (k * 0.6);
 }
 

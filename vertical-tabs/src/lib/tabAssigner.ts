@@ -132,7 +132,7 @@ export class TabAssigner {
         const settings = this.stateManager.getSettings();
 
         // 1. Global master switch
-        if (!settings.autoAssignEnabled) {
+        if (!settings.autoAssignSpaces) {
             return this.fallback(openerTabId);
         }
 

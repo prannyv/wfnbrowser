@@ -22,9 +22,8 @@ const DEFAULT_SETTINGS: UserSettings = {
   accentColor: '#4a9eff',
   compactMode: false,
   autoAssignSpaces: true,
-  staleTabThresholdDays: 7,
-  autoAssignEnabled: true,
   similarityThreshold: 0.45,
+  staleTabThresholdDays: 7,
 };
 
 const DEFAULT_SPACE: Space = {
@@ -39,13 +38,14 @@ const DEFAULT_SPACE: Space = {
 
 function normalizeSpaces(spaces?: Space[]): Space[] {
   const now = Date.now();
-  const normalized = (spaces ?? []).map((space, index) => ({
+  const normalized: Space[] = (spaces ?? []).map((space, index): Space => ({
     id: space.id || `space_${now}_${index}`,
     name: space.name || `Space ${index + 1}`,
     color: space.color || DEFAULT_SPACE.color,
     icon: space.icon,
     tabIds: Array.isArray(space.tabIds) ? space.tabIds : [],
     rules: Array.isArray(space.rules) ? space.rules : [],
+    autoAssignDisabled: space.autoAssignDisabled,
     createdAt: typeof space.createdAt === 'number' ? space.createdAt : now,
     lastAccessedAt:
       typeof space.lastAccessedAt === 'number'
@@ -55,7 +55,7 @@ function normalizeSpaces(spaces?: Space[]): Space[] {
 
   const hasDefault = normalized.some(space => space.id === DEFAULT_SPACE_ID);
   if (!hasDefault) {
-    normalized.unshift({ ...DEFAULT_SPACE, createdAt: now, lastAccessedAt: now });
+    normalized.unshift({ ...DEFAULT_SPACE, createdAt: now, lastAccessedAt: now } as Space);
   }
 
   return normalized;
@@ -92,7 +92,7 @@ async function migrateStorageIfNeeded(): Promise<void> {
 // ============================================
 export async function loadSettings(): Promise<UserSettings> {
   const result = await chrome.storage.local.get(STORAGE_KEYS.SETTINGS);
-  return { ...DEFAULT_SETTINGS, ...result[STORAGE_KEYS.SETTINGS] };
+  return { ...DEFAULT_SETTINGS, ...(result[STORAGE_KEYS.SETTINGS] as Partial<UserSettings> ?? {}) };
 }
 
 export async function saveSettings(settings: UserSettings): Promise<void> {
@@ -123,7 +123,7 @@ export type TabMetadata = Record<number, { spaceId?: string; lastActiveAt?: numb
 
 export async function loadTabMetadata(): Promise<TabMetadata> {
   const result = await chrome.storage.local.get(STORAGE_KEYS.TAB_METADATA);
-  return result[STORAGE_KEYS.TAB_METADATA] || {};
+  return (result[STORAGE_KEYS.TAB_METADATA] as TabMetadata | undefined) ?? {} as TabMetadata;
 }
 
 export async function saveTabMetadata(metadata: TabMetadata): Promise<void> {
@@ -329,7 +329,7 @@ export class StateManager {
    */
   updateSpace(
     spaceId: string,
-    updates: Partial<Pick<Space, 'name' | 'color' | 'icon' | 'rules' | 'lastAccessedAt'>>
+    updates: Partial<Pick<Space, 'name' | 'color' | 'icon' | 'rules' | 'lastAccessedAt' | 'autoAssignDisabled'>>
   ): void {
     const space = this.spaces.find(s => s.id === spaceId);
     if (space) {

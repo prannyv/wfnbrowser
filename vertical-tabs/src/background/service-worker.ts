@@ -49,6 +49,7 @@ function updateLastActive(tabId: number): void {
   }
 }
 
+
 async function initialize(): Promise<void> {
   console.log('[ServiceWorker] Initializing...');
 
@@ -407,6 +408,18 @@ async function handleMessage(
 
       case 'GET_SETTINGS': {
         sendResponse(stateManager.getSettings());
+        break;
+      }
+
+      case 'UPDATE_SETTINGS': {
+        const current = stateManager.getSettings();
+        stateManager.setSettings({ ...current, ...message.updates });
+        sendResponse({ success: true });
+        break;
+      }
+
+      case 'GET_SETTINGS': {
+        sendResponse({ settings: stateManager.getSettings() });
         break;
       }
 

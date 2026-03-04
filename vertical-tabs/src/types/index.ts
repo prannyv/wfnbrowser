@@ -26,10 +26,10 @@ export interface Space {
   icon?: string;
   tabIds: number[];
   rules: SpaceRule[];
+  /** When true the auto-assigner will skip this space when scoring new tabs */
+  autoAssignDisabled?: boolean;
   createdAt: number;
   lastAccessedAt: number;
-  /** When true the auto-assigner will never move tabs into this space */
-  autoAssignDisabled?: boolean;
 }
 
 // Core state managed by TabEngine
@@ -66,11 +66,9 @@ export interface UserSettings {
   accentColor: string;
   compactMode: boolean;
   autoAssignSpaces: boolean;
-  staleTabThresholdDays: number;
-  /** Master switch — when false the assigner does nothing */
-  autoAssignEnabled: boolean;
-  /** Minimum score [0-1] required to auto-assign */
+  /** Minimum score [0-1] required to auto-assign a tab. Defaults to 0.45 */
   similarityThreshold: number;
+  staleTabThresholdDays: number;
 }
 
 // Persisted state shape
