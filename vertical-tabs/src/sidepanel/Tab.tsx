@@ -101,18 +101,20 @@ const Tab = memo(function Tab({ tab, isActive, matches, searchHighlightQuery, va
   const showSpinner = tab.favIconUrl && !imgError && !imgLoaded;
 
   const now = Date.now();
-  const lastActiveAt = tab.lastActiveAt ?? now;
+  const lastActiveAt = tab.lastActiveAt ?? tab.lastAccessed ?? now;
   const ageMs = now - lastActiveAt;
   const ageHours = ageMs / (1000 * 60 * 60);
 
   let inactivityOpacity = 1;
-  if (ageHours > 72) {
-    inactivityOpacity = 0.55;
-  } else if (ageHours > 24) {
-    inactivityOpacity = 0.7;
-  } else if (ageHours > 6) {
-    inactivityOpacity = 0.85;
+  if (ageHours > 6) {
+    inactivityOpacity = 0.3;
+  } else if (ageHours > 3) {
+    inactivityOpacity = 0.5;
+  } else if (ageHours > 1) {
+    inactivityOpacity = 0.8;
   }
+  const titleInactivityOpacity = Math.min(1, inactivityOpacity + 0.5);
+  const isVeryStale = ageHours > 6 && !isActive;
 
   const isCompact = variant === 'compact';
   const isMinimal = variant === 'minimal';
@@ -128,7 +130,9 @@ const Tab = memo(function Tab({ tab, isActive, matches, searchHighlightQuery, va
     '';
 
   const showTitle = isDefault || isElongated || isSingle;
-  const classNames = ['tab-item', variantClass].filter(Boolean).join(' ');
+  const classNames = ['tab-item', variantClass, isVeryStale ? 'tab-item--dusty' : '']
+    .filter(Boolean)
+    .join(' ');
   const isPinned = !!tab.pinned;
   const iconSize = isPinned ? '20px' : '32px';
 
@@ -161,7 +165,13 @@ const Tab = memo(function Tab({ tab, isActive, matches, searchHighlightQuery, va
       style={fullWidth ? { width: '100%' } : undefined}
       title={tab.title ?? tab.url ?? 'Untitled tab'}
     >
-      <div className="tab-icon">
+      <div
+        className="tab-icon"
+        style={{
+          opacity: isActive ? 1 : inactivityOpacity,
+          transition: 'opacity 0.2s ease',
+        }}
+      >
         {!imgError && tab.favIconUrl ? (
           <>
             {showSpinner && (
@@ -196,19 +206,27 @@ const Tab = memo(function Tab({ tab, isActive, matches, searchHighlightQuery, va
       </div>
 
       {showTitle && (
-        <span
-          className="tab-title"
-          style={{
-            opacity: isActive ? 1 : inactivityOpacity,
-            transition: 'opacity 0.2s ease',
-          }}
-        >
-          <HighlightedText
-          text={tab.title || 'New Tab'}
-          matches={matches?.filter(m => m.key === 'title')}
-          query={searchHighlightQuery}
-        />
-        </span>
+        <>
+          <span
+            className="tab-title"
+            style={{
+              opacity: isActive ? 1 : titleInactivityOpacity,
+              transition: 'opacity 0.2s ease',
+            }}
+          >
+            <HighlightedText
+              text={tab.title || 'New Tab'}
+              matches={matches?.filter(m => m.key === 'title')}
+              query={searchHighlightQuery}
+            />
+          </span>
+          {isVeryStale && (
+            <>
+              <span className="tab-dust-fall" aria-hidden="true" />
+              <span className="tab-dust-settled" aria-hidden="true" />
+            </>
+          )}
+        </>
       )}
 
       {isDefault && (

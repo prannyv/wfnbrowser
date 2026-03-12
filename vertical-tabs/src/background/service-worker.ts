@@ -22,11 +22,12 @@ let uiActiveSpaceId: string = DEFAULT_SPACE_ID;
 function enrichTabWithMetadata(tab: ExtendedTab): ExtendedTab {
   const metadata = stateManager.getTabMetadata();
   const tabId = tab.id;
+  const metadataEntry = tabId ? metadata[tabId] : undefined;
 
   return {
     ...tab,
-    spaceId: tabId ? metadata[tabId]?.spaceId : undefined,
-    lastActiveAt: tabId ? metadata[tabId]?.lastActiveAt : undefined,
+    spaceId: metadataEntry?.spaceId ?? tab.spaceId,
+    lastActiveAt: metadataEntry?.lastActiveAt ?? tab.lastActiveAt ?? tab.lastAccessed,
   };
 }
 
@@ -245,8 +246,10 @@ async function handleMessage(
         const metadata = stateManager.getTabMetadata();
         tabs = tabs.map(tab => ({
           ...tab,
-          spaceId: tab.id ? metadata[tab.id]?.spaceId : undefined,
-          lastActiveAt: tab.id ? metadata[tab.id]?.lastActiveAt : undefined,
+          spaceId: tab.id ? (metadata[tab.id]?.spaceId ?? tab.spaceId) : tab.spaceId,
+          lastActiveAt: tab.id
+            ? (metadata[tab.id]?.lastActiveAt ?? tab.lastActiveAt ?? tab.lastAccessed)
+            : (tab.lastActiveAt ?? tab.lastAccessed),
         }));
 
         sendResponse(tabs);
