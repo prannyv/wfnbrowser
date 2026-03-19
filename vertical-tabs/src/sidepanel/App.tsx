@@ -639,7 +639,8 @@ export default function App() {
 
     sendMessage({ type: 'ASSIGN_TAB_TO_SPACE', tabId, spaceId }).catch(console.error);
     setDraggedTab(null);
-  }, [draggedTab]);
+    handleSpaceSelect(spaceId);
+  }, [draggedTab, handleSpaceSelect]);
 
   const handleSpaceDragLeave = useCallback((spaceId: string) => (e: React.DragEvent) => {
     const related = e.relatedTarget as Node | null;
