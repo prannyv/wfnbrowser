@@ -26,6 +26,8 @@ export interface Space {
   icon?: string;
   tabIds: number[];
   rules: SpaceRule[];
+  /** When true the auto-assigner will skip this space when scoring new tabs */
+  autoAssignDisabled?: boolean;
   createdAt: number;
   lastAccessedAt: number;
 }
@@ -64,6 +66,8 @@ export interface UserSettings {
   accentColor: string;
   compactMode: boolean;
   autoAssignSpaces: boolean;
+  /** Minimum score [0-1] required to auto-assign a tab. Defaults to 0.45 */
+  similarityThreshold: number;
   staleTabThresholdDays: number;
 }
 
@@ -71,5 +75,5 @@ export interface UserSettings {
 export interface PersistedState {
   spaces: Space[];
   settings: UserSettings;
-  tabMetadata: Record<number, { spaceId?: string; lastActiveAt?: number; createdAt?: number; }>;
+  tabMetadata: Record<number, { spaceId?: string; lastActiveAt?: number; createdAt?: number; domain?: string; subdomains?: string[]; keywords?: string[]; autoAssigned?: boolean; }>;
 }

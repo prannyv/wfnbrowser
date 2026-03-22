@@ -1,6 +1,8 @@
 import { getTabEngine } from '@/lib/tab-engine';
 import { getStateManager } from '@/lib/storage';
 import { broadcastMessage, type UIMessage } from '@/lib/messages';
+import { analyzeTab } from '@/lib/tab-analyzer';
+import { TabAssigner } from '@/lib/tabAssigner';
 import type { ExtendedTab } from '@/types';
 
 console.log('[ServiceWorker] Loading...');
@@ -14,6 +16,7 @@ const tabEngine = getTabEngine();
 const stateManager = getStateManager();
 let hasRegisteredSpaceListeners = false;
 let uiActiveSpaceId: string = DEFAULT_SPACE_ID;
+let assigner: InstanceType<typeof TabAssigner> | null = null;
 
 // ============================================
 // Tab Inactivity Tracking
@@ -48,6 +51,7 @@ function updateLastActive(tabId: number): void {
   }
 }
 
+
 async function initialize(): Promise<void> {
   console.log('[ServiceWorker] Initializing...');
 
@@ -66,7 +70,7 @@ async function initialize(): Promise<void> {
   } catch (e) {
     console.warn('[ServiceWorker] Could not seed lastActiveAt:', e);
   }
-  
+
   // Apply persisted metadata to tabs
   const metadata = stateManager.getTabMetadata();
   for (const [tabIdStr, data] of Object.entries(metadata)) {
@@ -81,7 +85,7 @@ async function initialize(): Promise<void> {
     stateManager.removeTabMetadata(tabId);
   });
 
-    // Update lastActiveAt whenever user activates a tab
+  // Update lastActiveAt whenever user activates a tab
   chrome.tabs.onActivated.addListener((activeInfo) => {
     updateLastActive(activeInfo.tabId);
 
@@ -105,7 +109,7 @@ async function initialize(): Promise<void> {
       console.warn('[ServiceWorker] Failed to update lastActiveAt on window focus:', e);
     }
   });
-  
+
   // Subscribe to state manager changes to broadcast to UI
   stateManager.subscribe(() => {
     broadcastMessage({
@@ -115,22 +119,22 @@ async function initialize(): Promise<void> {
   });
 
   if (!hasRegisteredSpaceListeners) {
-    chrome.tabs.onCreated.addListener((tab) => {
-      if (tab.id === undefined) return;
-      const metadata = stateManager.getTabMetadata();
-      if (metadata[tab.id]?.spaceId) return;
+    assigner = new TabAssigner(stateManager, tabEngine, uiActiveSpaceId);
 
-      const targetSpaceId = uiActiveSpaceId === 'all' ? DEFAULT_SPACE_ID : uiActiveSpaceId;
-      const assignedSpaceId = stateManager.assignTabToSpace(tab.id, targetSpaceId);
-      tabEngine.updateTabMetadata(tab.id, { spaceId: assignedSpaceId });
-      const updatedTab = tabEngine.getTab(tab.id);
-      if (updatedTab) {
-        broadcastMessage({
-          type: 'TAB_UPDATED',
-          tab: { ...updatedTab, spaceId: assignedSpaceId },
-        });
-      }
+    chrome.tabs.onCreated.addListener((tab) => {
+      assigner!.onCreated(tab);
+      const analysis = analyzeTab(tab.id!, tab.url ?? '', tab.title ?? '');
+      broadcastMessage({ type: 'TAB_ANALYZED', analysis });
     });
+
+    chrome.tabs.onUpdated.addListener((tabId, changeInfo, tab) => {
+      assigner!.onUpdated(tabId, changeInfo, tab);
+    });
+
+    chrome.tabs.onRemoved.addListener((tabId) => {
+      assigner!.onRemoved(tabId);
+    });
+
     hasRegisteredSpaceListeners = true;
   }
 
@@ -352,6 +356,8 @@ async function handleMessage(
       case 'ASSIGN_TAB_TO_SPACE': {
         const assignedSpaceId = stateManager.assignTabToSpace(message.tabId, message.spaceId);
         tabEngine.updateTabMetadata(message.tabId, { spaceId: assignedSpaceId });
+        // Mark as manually assigned so the auto-assigner won't override it
+        assigner?.markManual(message.tabId);
         const updatedTab = tabEngine.getTab(message.tabId);
         if (updatedTab) {
           broadcastMessage({
@@ -399,6 +405,19 @@ async function handleMessage(
 
       case 'SET_ACTIVE_SPACE': {
         uiActiveSpaceId = message.spaceId;
+        assigner?.setUiActiveSpaceId(message.spaceId);
+        sendResponse({ success: true });
+        break;
+      }
+
+      case 'GET_SETTINGS': {
+        sendResponse(stateManager.getSettings());
+        break;
+      }
+
+      case 'UPDATE_SETTINGS': {
+        const current = stateManager.getSettings();
+        stateManager.setSettings({ ...current, ...message.updates });
         sendResponse({ success: true });
         break;
       }
