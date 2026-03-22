@@ -18,7 +18,8 @@
     "bookmarks",
     "history",
     "sessions",
-    "downloads"
+    "downloads",
+    "topSites"
   ],
   "host_permissions": [
     "http://localhost:5173/*",
