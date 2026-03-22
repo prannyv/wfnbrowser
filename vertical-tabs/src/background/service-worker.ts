@@ -418,18 +418,6 @@ async function handleMessage(
         break;
       }
 
-      case 'GET_SETTINGS': {
-        sendResponse({ settings: stateManager.getSettings() });
-        break;
-      }
-
-      case 'UPDATE_SETTINGS': {
-        const current = stateManager.getSettings();
-        stateManager.setSettings({ ...current, ...message.updates });
-        sendResponse({ success: true });
-        break;
-      }
-
       default: {
         console.warn('[ServiceWorker] Unknown message type:', (message as { type: string }).type);
         sendResponse({ error: 'Unknown message type' });

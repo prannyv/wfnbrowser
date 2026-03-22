@@ -43,17 +43,5 @@
       },
       "description": "Toggle vertical tabs sidebar"
     }
-  },
-  "web_accessible_resources": [
-    {
-      "matches": [
-        "<all_urls>"
-      ],
-      "resources": [
-        "**/*",
-        "*"
-      ],
-      "use_dynamic_url": false
-    }
-  ]
+  }
 }

@@ -1,5 +1,3 @@
-//File for the similarity scorer for the Tab to Space
-
 import type { TabAnalysis } from "./tab-analyzer";
 
 export type TabFeatures = Pick<TabAnalysis, 'domain' | 'subdomains' | 'keywords'>;
@@ -9,89 +7,70 @@ export interface SpaceCorpus {
     tabs: TabFeatures[];
 }
 
-export const SIMILARITY_THRESHOLD = 0.45;
+export const DEFAULT_DOMAIN_THRESHOLD = 0.5;
+export const DEFAULT_JACCARD_THRESHOLD = 0.08;
+
+export interface SpaceScore {
+    spaceID: string;
+    domain: number;
+    jaccard: number;
+}
 
 function domainScore(newTab: TabFeatures, tabs: TabFeatures[]): number {
     let best = 0;
     for (const tab of tabs) {
         if (!tab.domain || !newTab.domain) continue;
         if (tab.domain === newTab.domain) {
-            best = 0.8; break;
+            best = 1.0; break;
         }
         const newHost = [...newTab.subdomains, newTab.domain].join('.');
         const tabHost = [...tab.subdomains, tab.domain].join('.');
         if (newHost.endsWith(tab.domain) || tabHost.endsWith(newTab.domain)) {
-            best = Math.max(best, 0.5);
+            best = Math.max(best, 0.6);
         }
     }
     return best;
 }
 
-function buildIdf(spaces: SpaceCorpus[]): Map<string, number> {
-    const docCount = spaces.length;
-    const df = new Map<string, number>();
-
-    for (const space of spaces) {
-        const seen = new Set<string>();
-        for (const tab of space.tabs) {
-            for (const kw of tab.keywords) {
-                if (!seen.has(kw)) {
-                    df.set(kw, (df.get(kw) ?? 0) + 1);
-                    seen.add(kw);
-                }
-            }
-        }
-    }
-
-    const idf = new Map<string, number>();
-    for (const [term, count] of df) {
-        // +1 in numerator prevents negative IDF when docCount === 1
-        idf.set(term, Math.log((docCount + 1) / (1 + count)));
-    }
-    return idf;
-}
-
-function keywordScore(
-    newTab: TabFeatures,
-    space: SpaceCorpus,
-    idf: Map<string, number>
-): number {
+function jaccardScore(newTab: TabFeatures, space: SpaceCorpus): number {
     if (newTab.keywords.length === 0) return 0;
-    // build term frequency map for this space
-    const corpusKws: string[] = space.tabs.flatMap(t => t.keywords);
-    const tf = new Map<string, number>();
-    for (const kw of corpusKws) tf.set(kw, (tf.get(kw) ?? 0) + 1);
-    const corpusTotal = corpusKws.length || 1;
-    let score = 0;
-    for (const kw of newTab.keywords) {
-        const termTf = (tf.get(kw) ?? 0) / corpusTotal;
-        const termIdf = idf.get(kw) ?? 0;
-        score += termTf * termIdf;
+    const spaceKeywords = new Set(space.tabs.flatMap(t => t.keywords));
+    if (spaceKeywords.size === 0) return 0;
+
+    const tabKeywords = new Set(newTab.keywords);
+    let intersection = 0;
+    for (const kw of tabKeywords) {
+        if (spaceKeywords.has(kw)) intersection++;
     }
-    // normalize to [0, 1] — cap at 1 in case of extreme overlap
-    return Math.min(score / newTab.keywords.length, 1);
+
+    const union = new Set([...tabKeywords, ...spaceKeywords]).size;
+    return intersection / union;
 }
 
-export function scoreSpaceMatch(
+export function scoreSpace(
     newTab: TabFeatures,
     space: SpaceCorpus,
-    idf: Map<string, number>
-): number {
-    const d = domainScore(newTab, space.tabs);
-    const k = keywordScore(newTab, space, idf);
-    return (d * 0.4) + (k * 0.6);
+): SpaceScore {
+    return {
+        spaceID: space.spaceID,
+        domain: domainScore(newTab, space.tabs),
+        jaccard: jaccardScore(newTab, space),
+    };
 }
 
 export function rankSpaces(
     newTab: TabFeatures,
-    spaces: SpaceCorpus[]
-): Array<{ spaceID: string; score: number }> {
-    const idf = buildIdf(spaces);
+    spaces: SpaceCorpus[],
+    domainThreshold: number,
+    jaccardThreshold: number,
+): SpaceScore[] {
     return spaces
-        .map(s => ({ spaceID: s.spaceID, score: scoreSpaceMatch(newTab, s, idf) }))
-        .sort((a, b) => b.score - a.score);
+        .map(s => scoreSpace(newTab, s))
+        .filter(s => s.domain >= domainThreshold || s.jaccard >= jaccardThreshold)
+        .sort((a, b) => {
+            const aMax = Math.max(a.domain, a.jaccard);
+            const bMax = Math.max(b.domain, b.jaccard);
+            return bMax - aMax;
+        });
 }
-
-
-
 

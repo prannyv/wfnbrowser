@@ -2,7 +2,7 @@
 // Owns chrome.tabs.onCreated / onUpdated logic; keeps assignment idempotent.
 
 import { analyzeTab } from '@/lib/tab-analyzer';
-import { rankSpaces, type SpaceCorpus } from '@/lib/similarityScorer';
+import { rankSpaces, DEFAULT_DOMAIN_THRESHOLD, DEFAULT_JACCARD_THRESHOLD, type SpaceCorpus } from '@/lib/similarityScorer';
 import { broadcastMessage } from '@/lib/messages';
 import type { StateManager } from '@/lib/storage';
 import type { ExtendedTab } from '@/types';
@@ -138,12 +138,17 @@ export class TabAssigner {
 
         const analysis = analyzeTab(tabId, url, title);
 
-        // 2. Build corpus — exclude spaces that opted out
-        const corpus = this.buildCorpus();
-        const rankings = rankSpaces(analysis, corpus);
+        // 2. Build corpus — exclude spaces that opted out and the tab being scored
+        const corpus = this.buildCorpus(tabId);
+        const rankings = rankSpaces(
+            analysis,
+            corpus,
+            DEFAULT_DOMAIN_THRESHOLD,
+            DEFAULT_JACCARD_THRESHOLD,
+        );
         const best = rankings[0];
 
-        if (best && best.score >= settings.similarityThreshold) {
+        if (best) {
             return best.spaceID;
         }
 
@@ -164,7 +169,7 @@ export class TabAssigner {
         return DEFAULT_SPACE_ID;
     }
 
-    private buildCorpus(): SpaceCorpus[] {
+    private buildCorpus(excludeTabId: number): SpaceCorpus[] {
         const metadata = this.stateManager.getTabMetadata();
         return this.stateManager
             .getSpaces()
@@ -172,12 +177,11 @@ export class TabAssigner {
             .map(space => ({
                 spaceID: space.id,
                 tabs: (space.tabIds ?? [])
-                    .map(id => this.tabEngine.getTab(id))
-                    .filter(Boolean)
-                    .map(t => ({
-                        domain: metadata[t!.id!]?.domain ?? '',
-                        subdomains: metadata[t!.id!]?.subdomains ?? [],
-                        keywords: metadata[t!.id!]?.keywords ?? [],
+                    .filter(id => id !== excludeTabId)
+                    .map(id => ({
+                        domain: metadata[id]?.domain ?? '',
+                        subdomains: metadata[id]?.subdomains ?? [],
+                        keywords: metadata[id]?.keywords ?? [],
                     })),
             }));
     }

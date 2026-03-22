@@ -265,6 +265,17 @@ export default function App() {
     }
   }, [spaces, activeSpaceId]);
 
+  useEffect(() => {
+    if (activeTabId === null) return;
+    const tab = tabs.find(t => t.id === activeTabId);
+    if (!tab) return;
+    const tabSpaceId = tab.spaceId ?? DEFAULT_SPACE_ID;
+    if (tabSpaceId !== activeSpaceId) {
+      setActiveSpaceId(tabSpaceId);
+      sendMessage({ type: 'SET_ACTIVE_SPACE', spaceId: tabSpaceId }).catch(console.error);
+    }
+  }, [activeTabId, tabs, activeSpaceId]);
+
   const handleTabClick = useCallback((tab: ExtendedTab) => {
     if (!tab.id) return;
 
