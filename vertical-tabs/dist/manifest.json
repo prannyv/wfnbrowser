@@ -19,7 +19,8 @@
     "history",
     "sessions",
     "downloads",
-    "topSites"
+    "topSites",
+    "readingList"
   ],
   "host_permissions": [
     "http://localhost:5173/*",

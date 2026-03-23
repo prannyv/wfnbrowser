@@ -11,6 +11,7 @@ interface ContextMenuProps {
   isMuted: boolean;
   onTogglePin: () => void;
   isPinned: boolean;
+  onSaveForLater: () => void;
 }
 
 export default function ContextMenu({
@@ -24,6 +25,7 @@ export default function ContextMenu({
   isMuted,
   onTogglePin,
   isPinned,
+  onSaveForLater,
 }: ContextMenuProps) {
   useEffect(() => {
     const handleKeyDown = (event: KeyboardEvent) => {
@@ -61,6 +63,7 @@ export default function ContextMenu({
       <MenuButton label="Reload tab" onClick={onReload} />
       <MenuButton label={isMuted ? 'Unmute' : 'Mute'} onClick={onMute} />
       <MenuButton label={isPinned ? 'Unpin tab' : 'Pin tab'} onClick={onTogglePin} />
+      <MenuButton label="Save for Later" onClick={onSaveForLater} />
       <MenuDivider />
       <MenuButton label="Close tab" onClick={onCloseTab} danger />
     </div>
