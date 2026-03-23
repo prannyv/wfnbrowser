@@ -20,6 +20,8 @@ export type UIMessage =
   | { type: 'RELOAD_TAB'; tabId: number }
   | { type: 'DUPLICATE_TAB'; tabId: number }
   | { type: 'MUTE_TAB'; tabId: number; muted: boolean }
+  // Duplicate detection actions
+  | { type: 'RESOLVE_NAVIGATION_INPUT'; input: string }
   // Space actions
   | { type: 'ASSIGN_TAB_TO_SPACE'; tabId: number; spaceId: string }
   | { type: 'CREATE_SPACE'; name: string; color: string; icon?: string }
