@@ -17,6 +17,7 @@ const stateManager = getStateManager();
 let hasRegisteredSpaceListeners = false;
 let uiActiveSpaceId: string = DEFAULT_SPACE_ID;
 let assigner: InstanceType<typeof TabAssigner> | null = null;
+let activeUsageSession: { tabId: number; startedAt: number } | null = null;
 
 // ============================================
 // Tab Inactivity Tracking
@@ -31,6 +32,9 @@ function enrichTabWithMetadata(tab: ExtendedTab): ExtendedTab {
     ...tab,
     spaceId: metadataEntry?.spaceId ?? tab.spaceId,
     lastActiveAt: metadataEntry?.lastActiveAt ?? tab.lastActiveAt ?? tab.lastAccessed,
+    openCount: metadataEntry?.openCount ?? tab.openCount ?? 0,
+    totalTimeMs: metadataEntry?.totalTimeMs ?? tab.totalTimeMs ?? 0,
+    lastOpenedAt: metadataEntry?.lastOpenedAt ?? tab.lastOpenedAt ?? tab.lastAccessed,
   };
 }
 
@@ -51,6 +55,31 @@ function updateLastActive(tabId: number): void {
   }
 }
 
+function incrementOpenCount(tabId: number): void {
+  const metadata = stateManager.getTabMetadata();
+  const openCount = (metadata[tabId]?.openCount ?? 0) + 1;
+  const now = Date.now();
+  stateManager.setTabMetadata(tabId, { openCount, lastOpenedAt: now });
+  tabEngine.updateTabMetadata(tabId, { openCount, lastOpenedAt: now });
+}
+
+function closeUsageSessionIfAny(now: number): void {
+  if (!activeUsageSession) return;
+  const elapsed = now - activeUsageSession.startedAt;
+  if (elapsed > 0) {
+    const tabId = activeUsageSession.tabId;
+    const metadata = stateManager.getTabMetadata();
+    const totalTimeMs = (metadata[tabId]?.totalTimeMs ?? 0) + elapsed;
+    stateManager.setTabMetadata(tabId, { totalTimeMs });
+    tabEngine.updateTabMetadata(tabId, { totalTimeMs });
+  }
+  activeUsageSession = null;
+}
+
+function startUsageSession(tabId: number, now: number): void {
+  activeUsageSession = { tabId, startedAt: now };
+}
+
 
 async function initialize(): Promise<void> {
   console.log('[ServiceWorker] Initializing...');
@@ -66,6 +95,8 @@ async function initialize(): Promise<void> {
     const [activeTab] = await chrome.tabs.query({ active: true, currentWindow: true });
     if (activeTab?.id) {
       updateLastActive(activeTab.id);
+      incrementOpenCount(activeTab.id);
+      startUsageSession(activeTab.id, Date.now());
     }
   } catch (e) {
     console.warn('[ServiceWorker] Could not seed lastActiveAt:', e);
@@ -75,19 +106,32 @@ async function initialize(): Promise<void> {
   const metadata = stateManager.getTabMetadata();
   for (const [tabIdStr, data] of Object.entries(metadata)) {
     const tabId = parseInt(tabIdStr, 10);
-    if (data.spaceId || data.lastActiveAt) {
+    if (
+      data.spaceId ||
+      data.lastActiveAt ||
+      data.openCount !== undefined ||
+      data.totalTimeMs !== undefined ||
+      data.lastOpenedAt !== undefined
+    ) {
       tabEngine.updateTabMetadata(tabId, data);
     }
   }
 
   // Clean up metadata when tabs are removed (regardless of how they were closed)
   chrome.tabs.onRemoved.addListener((tabId) => {
+    if (activeUsageSession?.tabId === tabId) {
+      closeUsageSessionIfAny(Date.now());
+    }
     stateManager.removeTabMetadata(tabId);
   });
 
   // Update lastActiveAt whenever user activates a tab
   chrome.tabs.onActivated.addListener((activeInfo) => {
+    const now = Date.now();
+    closeUsageSessionIfAny(now);
+    incrementOpenCount(activeInfo.tabId);
     updateLastActive(activeInfo.tabId);
+    startUsageSession(activeInfo.tabId, now);
 
     broadcastMessage({
       type: 'TAB_ACTIVATED',
@@ -103,7 +147,11 @@ async function initialize(): Promise<void> {
     try {
       const [activeTab] = await chrome.tabs.query({ active: true, windowId });
       if (activeTab?.id) {
+        const now = Date.now();
+        closeUsageSessionIfAny(now);
+        incrementOpenCount(activeTab.id);
         updateLastActive(activeTab.id);
+        startUsageSession(activeTab.id, now);
       }
     } catch (e) {
       console.warn('[ServiceWorker] Failed to update lastActiveAt on window focus:', e);
@@ -123,6 +171,9 @@ async function initialize(): Promise<void> {
 
     chrome.tabs.onCreated.addListener((tab) => {
       assigner!.onCreated(tab);
+      if (tab.id) {
+        incrementOpenCount(tab.id);
+      }
       const analysis = analyzeTab(tab.id!, tab.url ?? '', tab.title ?? '');
       broadcastMessage({ type: 'TAB_ANALYZED', analysis });
     });
@@ -231,6 +282,12 @@ async function handleMessage(
       }
 
       case 'GET_TABS': {
+        if (activeUsageSession) {
+          const now = Date.now();
+          const activeTabId = activeUsageSession.tabId;
+          closeUsageSessionIfAny(now);
+          startUsageSession(activeTabId, now);
+        }
         const windowId = message.windowId;
         let tabs: ExtendedTab[];
 
@@ -254,6 +311,9 @@ async function handleMessage(
           lastActiveAt: tab.id
             ? (metadata[tab.id]?.lastActiveAt ?? tab.lastActiveAt ?? tab.lastAccessed)
             : (tab.lastActiveAt ?? tab.lastAccessed),
+          openCount: tab.id ? (metadata[tab.id]?.openCount ?? tab.openCount ?? 0) : (tab.openCount ?? 0),
+          totalTimeMs: tab.id ? (metadata[tab.id]?.totalTimeMs ?? tab.totalTimeMs ?? 0) : (tab.totalTimeMs ?? 0),
+          lastOpenedAt: tab.id ? (metadata[tab.id]?.lastOpenedAt ?? tab.lastOpenedAt ?? tab.lastAccessed) : (tab.lastOpenedAt ?? tab.lastAccessed),
         }));
 
         sendResponse(tabs);
