@@ -117,6 +117,7 @@ export default function App() {
   const [spaces, setSpaces] = useState<Space[]>([]);
   const [activeSpaceId, setActiveSpaceId] = useState<string>(ALL_TABS_ID);
   const [activeTabId, setActiveTabId] = useState<number | null>(null);
+  const userSelectedSpaceRef = useRef(false);
   const [currentWindowId, setCurrentWindowId] = useState<number | null>(null);
   const [searchQuery, setSearchQuery] = useState('');
   const [isLoading, setIsLoading] = useState(true);
@@ -293,6 +294,7 @@ export default function App() {
 
   useEffect(() => {
     if (activeTabId === null) return;
+    if (userSelectedSpaceRef.current) return;
     const tab = tabs.find(t => t.id === activeTabId);
     if (!tab) return;
     const tabSpaceId = tab.spaceId ?? DEFAULT_SPACE_ID;
@@ -301,6 +303,10 @@ export default function App() {
       sendMessage({ type: 'SET_ACTIVE_SPACE', spaceId: tabSpaceId }).catch(console.error);
     }
   }, [activeTabId, tabs, activeSpaceId]);
+
+  useEffect(() => {
+    userSelectedSpaceRef.current = false;
+  }, [activeTabId]);
 
   const handleTabClick = useCallback((tab: ExtendedTab) => {
     if (!tab.id) return;
@@ -471,6 +477,7 @@ export default function App() {
   }, [spaces]);
 
   const handleSpaceSelect = useCallback((spaceId: string) => {
+    userSelectedSpaceRef.current = true;
     setActiveSpaceId(spaceId);
     sendMessage({ type: 'SET_ACTIVE_SPACE', spaceId }).catch(console.error);
     if (spaceId !== ALL_TABS_ID) {
