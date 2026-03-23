@@ -948,6 +948,118 @@ body {
   background: rgba(99, 102, 241, 0.3);
 }
 
+/* Tab analytics console */
+.analytics-console {
+  display: flex;
+  flex-direction: column;
+  height: 100%;
+  background: #1a1a1a;
+}
+
+.analytics-console__controls {
+  padding: 10px 12px;
+  border-bottom: 1px solid #333;
+  display: flex;
+  gap: 8px;
+}
+
+.analytics-console__select {
+  flex: 1;
+  background: #2a2a2a;
+  color: #e5e5e5;
+  border: 1px solid #444;
+  border-radius: 8px;
+  padding: 8px;
+  font-size: 13px;
+  outline: none;
+}
+
+.analytics-console__select-all {
+  padding: 8px 12px;
+  border-bottom: 1px solid #333;
+  display: flex;
+  align-items: center;
+  gap: 8px;
+}
+
+.analytics-console__select-all-label {
+  font-size: 13px;
+  color: #e5e5e5;
+}
+
+.analytics-console__list {
+  flex: 1;
+  overflow-y: auto;
+}
+
+.analytics-console__row {
+  display: grid;
+  grid-template-columns: 24px 20px minmax(0, 1fr) 96px 80px 150px;
+  gap: 8px;
+  align-items: center;
+  padding: 8px 12px;
+  border-bottom: 1px solid #2c2c2c;
+  transition: background-color 0.15s;
+}
+
+.analytics-console__row:hover {
+  background-color: rgba(55, 65, 81, 0.4);
+}
+
+.analytics-console__favicon {
+  width: 16px;
+  height: 16px;
+}
+
+.analytics-console__favicon-fallback {
+  color: #9ca3af;
+}
+
+.analytics-console__title {
+  color: #e5e5e5;
+  font-size: 13px;
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+
+.analytics-console__metric {
+  color: #9ca3af;
+  font-size: 12px;
+}
+
+.analytics-console__empty {
+  color: #888;
+  text-align: center;
+  padding: 24px;
+  font-size: 13px;
+}
+
+.analytics-console__chart {
+  height: 220px;
+  border-top: 1px solid #333;
+  padding: 8px 8px 12px;
+}
+
+.analytics-console__bulkbar {
+  border-top: 1px solid #333;
+  padding: 10px 12px;
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 8px;
+}
+
+.analytics-console__bulkcount {
+  color: #9ca3af;
+  font-size: 12px;
+}
+
+.analytics-console__bulkactions {
+  display: flex;
+  gap: 8px;
+}
+
 /* New Tab Page - minimal spotlight (Arc-style center-top) */
 .newtab-root {
   min-height: 100vh;
