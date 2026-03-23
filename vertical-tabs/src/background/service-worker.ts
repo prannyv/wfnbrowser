@@ -465,30 +465,6 @@ async function handleMessage(
         break;
       }
 
-      case 'IMPORT_SAVED_ITEMS': {
-        if (stateManager.getSettings().useNativeReadingList && chrome.readingList) {
-          for (const item of message.items) {
-            try {
-              await chrome.readingList.addEntry({
-                url: item.url,
-                title: item.title,
-                hasBeenRead: false
-              });
-            } catch (e) {
-              console.warn('Failed to import reading list entry:', e);
-            }
-          }
-        } else {
-          const current = stateManager.getSavedItems();
-          const existingUrls = new Set(current.map(i => i.url));
-          const toAdd = message.items.filter(i => !existingUrls.has(i.url));
-          stateManager.setSavedItems([...toAdd, ...current].sort((a, b) => b.savedAt - a.savedAt));
-          broadcastMessage({ type: 'SAVED_ITEMS_UPDATED', items: stateManager.getSavedItems() });
-        }
-        sendResponse({ success: true });
-        break;
-      }
-
       default: {
         console.warn('[ServiceWorker] Unknown message type:', (message as { type: string }).type);
         sendResponse({ error: 'Unknown message type' });

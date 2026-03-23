@@ -37,8 +37,7 @@ export type UIMessage =
   // Saved Items
   | { type: 'GET_SAVED_ITEMS' }
   | { type: 'ADD_SAVED_ITEM'; item: SavedItem }
-  | { type: 'REMOVE_SAVED_ITEM'; url: string }
-  | { type: 'IMPORT_SAVED_ITEMS'; items: SavedItem[] };
+  | { type: 'REMOVE_SAVED_ITEM'; url: string };
 
 // ============================================
 // Messages from Service Worker to UI

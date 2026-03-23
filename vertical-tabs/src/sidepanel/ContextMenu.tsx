@@ -63,7 +63,7 @@ export default function ContextMenu({
       <MenuButton label="Reload tab" onClick={onReload} />
       <MenuButton label={isMuted ? 'Unmute' : 'Mute'} onClick={onMute} />
       <MenuButton label={isPinned ? 'Unpin tab' : 'Pin tab'} onClick={onTogglePin} />
-      <MenuButton label="Save for Later" onClick={onSaveForLater} />
+      <MenuButton label="Reading list" onClick={onSaveForLater} />
       <MenuDivider />
       <MenuButton label="Close tab" onClick={onCloseTab} danger />
     </div>

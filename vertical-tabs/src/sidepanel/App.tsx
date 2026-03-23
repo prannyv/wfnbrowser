@@ -1380,7 +1380,7 @@ export default function App() {
             background: 'none', border: 'none', cursor: 'pointer', color: '#888',
             display: 'flex', alignItems: 'center', padding: '4px', borderRadius: '4px'
           }}
-          title="Saved for Later"
+          title="Reading list"
           onMouseEnter={(e) => { e.currentTarget.style.color = '#e5e5e5'; e.currentTarget.style.backgroundColor = 'rgba(255, 255, 255, 0.1)'; }}
           onMouseLeave={(e) => { e.currentTarget.style.color = '#888'; e.currentTarget.style.backgroundColor = 'transparent'; }}
         >
@@ -1573,11 +1573,11 @@ export default function App() {
       {savedItemsModalOpen && (
         <div className="space-modal-backdrop" onClick={() => setSavedItemsModalOpen(false)}>
           <div className="space-modal" onClick={(e) => e.stopPropagation()} style={{ width: '90%', maxWidth: '400px', maxHeight: '80vh', display: 'flex', flexDirection: 'column' }}>
-            <h2 className="space-modal__title" style={{ marginBottom: '16px' }}>Saved for Later</h2>
+            <h2 className="space-modal__title" style={{ marginBottom: '16px' }}>Reading list</h2>
             
-            <div style={{ flex: 1, overflowY: 'auto', marginBottom: '16px' }}>
+            <div style={{ flex: 1, overflowY: 'auto' }}>
               {savedItems.length === 0 ? (
-                <div style={{ textAlign: 'center', color: '#888', padding: '32px 0' }}>No saved tabs</div>
+                <div style={{ textAlign: 'center', color: '#888', padding: '32px 0' }}>Reading list is empty</div>
               ) : (
                 savedItems.map(item => (
                   <div key={item.id} style={{ display: 'flex', alignItems: 'center', padding: '8px', gap: '8px', borderRadius: '8px', cursor: 'pointer', backgroundColor: 'rgba(255,255,255,0.02)', marginBottom: '4px' }}
@@ -1605,36 +1605,6 @@ export default function App() {
                   </div>
                 ))
               )}
-            </div>
-
-            <div style={{ borderTop: '1px solid #333', paddingTop: '16px', display: 'flex', flexDirection: 'column', gap: '12px' }}>
-              <div style={{ display: 'flex', gap: '8px' }}>
-                <button type="button" className="space-modal__btn space-modal__btn--secondary" style={{ flex: 1 }}
-                  onClick={() => {
-                    const dataStr = "data:text/json;charset=utf-8," + encodeURIComponent(JSON.stringify(savedItems));
-                    const db = document.createElement('a'); db.setAttribute("href", dataStr); db.setAttribute("download", "saved-for-later.json"); db.click();
-                  }}>Export</button>
-                <label className="space-modal__btn space-modal__btn--secondary" style={{ flex: 1, textAlign: 'center', cursor: 'pointer', padding: '8px' }}>
-                  Import
-                  <input type="file" accept=".json" style={{ display: 'none' }} onChange={(e) => {
-                    const file = e.target.files?.[0];
-                    if (!file) return;
-                    const reader = new FileReader();
-                    reader.onload = async (ev) => {
-                      try {
-                        const imported = JSON.parse(ev.target?.result as string);
-                        if (Array.isArray(imported)) {
-                          await sendMessage({ type: 'IMPORT_SAVED_ITEMS', items: imported });
-                          setTimeout(() => {
-                            sendMessage({ type: 'GET_SAVED_ITEMS' }).then((res: any) => setSavedItems(res.items));
-                          }, 100);
-                        }
-                      } catch (err) { console.error('Failed to import', err); }
-                    };
-                    reader.readAsText(file);
-                  }} />
-                </label>
-              </div>
             </div>
           </div>
         </div>
