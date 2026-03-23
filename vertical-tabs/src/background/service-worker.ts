@@ -476,6 +476,49 @@ async function handleMessage(
         break;
       }
 
+      // ========== Saved Items ==========
+      case 'GET_SAVED_ITEMS': {
+        if (stateManager.getSettings().useNativeReadingList && chrome.readingList) {
+          const items = await chrome.readingList.query({});
+          const mapped = items.map((item: any) => ({
+            id: item.url,
+            url: item.url,
+            title: item.title,
+            savedAt: item.creationTime ?? Date.now(),
+          }));
+          sendResponse({ items: mapped.sort((a,b) => b.savedAt - a.savedAt) });
+        } else {
+          sendResponse({ items: stateManager.getSavedItems() });
+        }
+        break;
+      }
+
+      case 'ADD_SAVED_ITEM': {
+        if (stateManager.getSettings().useNativeReadingList && chrome.readingList) {
+          await chrome.readingList.addEntry({
+            url: message.item.url,
+            title: message.item.title,
+            hasBeenRead: false
+          });
+        } else {
+          stateManager.addSavedItem(message.item);
+          broadcastMessage({ type: 'SAVED_ITEMS_UPDATED', items: stateManager.getSavedItems() });
+        }
+        sendResponse({ success: true });
+        break;
+      }
+
+      case 'REMOVE_SAVED_ITEM': {
+        if (stateManager.getSettings().useNativeReadingList && chrome.readingList) {
+          await chrome.readingList.removeEntry({ url: message.url });
+        } else {
+          stateManager.removeSavedItem(message.url);
+          broadcastMessage({ type: 'SAVED_ITEMS_UPDATED', items: stateManager.getSavedItems() });
+        }
+        sendResponse({ success: true });
+        break;
+      }
+
       default: {
         console.warn('[ServiceWorker] Unknown message type:', (message as { type: string }).type);
         sendResponse({ error: 'Unknown message type' });

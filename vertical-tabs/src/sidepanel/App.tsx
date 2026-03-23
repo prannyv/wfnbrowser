@@ -1,8 +1,6 @@
 import { useEffect, useState, useCallback, useMemo, useRef } from 'react';
-import Fuse from 'fuse.js';
-import type { FuseResultMatch } from 'fuse.js';
 import type React from 'react';
-import type { ExtendedTab, Space } from '@/types';
+import type { ExtendedTab, Space, SavedItem } from '@/types';
 import { sendMessage, onMessage } from '@/lib/messages';
 import Tab from './Tab';
 import ContextMenu from './ContextMenu';
@@ -146,6 +144,9 @@ export default function App() {
   const scrollContainerRef = useRef<HTMLDivElement>(null);
   const autoScrollIntervalRef = useRef<ReturnType<typeof setInterval> | null>(null);
   const emojiPickerRef = useRef<HTMLDivElement>(null);
+  const [savedItems, setSavedItems] = useState<SavedItem[]>([]);
+  const [savedItemsModalOpen, setSavedItemsModalOpen] = useState(false);
+
   const emojiPickerOpenRef = useRef(false);
   emojiPickerOpenRef.current = emojiPickerOpen;
 
@@ -197,6 +198,9 @@ export default function App() {
         if (activeTab?.id) {
           setActiveTabId(activeTab.id);
         }
+
+        const savedRes = await sendMessage<{ items: SavedItem[] }>({ type: 'GET_SAVED_ITEMS' });
+        setSavedItems(savedRes.items);
 
         await sendMessage({ type: 'SUBSCRIBE' });
       } catch (error) {
@@ -277,6 +281,13 @@ export default function App() {
 
         case 'SIDE_PANEL_CLOSING': {
           setIsClosing(true);
+          break;
+        }
+
+        case 'SAVED_ITEMS_UPDATED': {
+          if ('items' in message) {
+            setSavedItems(message.items as SavedItem[]);
+          }
           break;
         }
       }
@@ -366,6 +377,25 @@ export default function App() {
     if (!contextMenu?.tab.id) return;
     sendMessage({ type: 'CLOSE_TAB', tabId: contextMenu.tab.id });
     setContextMenu(null);
+  }, [contextMenu]);
+
+  const handleSaveForLater = useCallback(async () => {
+    if (!contextMenu?.tab) return;
+    const tab = contextMenu.tab;
+    await sendMessage({
+      type: 'ADD_SAVED_ITEM',
+      item: {
+        id: tab.url || String(Date.now()),
+        url: tab.url || '',
+        title: tab.title || tab.url || 'Untitled',
+        favIconUrl: tab.favIconUrl,
+        savedAt: Date.now()
+      }
+    });
+    setContextMenu(null);
+    if (tab.id) {
+      sendMessage({ type: 'CLOSE_TAB', tabId: tab.id });
+    }
   }, [contextMenu]);
 
   const handleTogglePin = useCallback(() => {
@@ -1352,10 +1382,26 @@ export default function App() {
       )}
 
       {/* Footer */}
-      <div style={{ padding: '8px', borderTop: `1px solid ${theme.border}`, flexShrink: 0, transition: 'border-color 0.25s ease' }}>
-        <div style={{ fontSize: '11px', color: '#888', textAlign: 'center' }}>
+      <div style={{ padding: '8px', borderTop: `1px solid ${theme.border}`, flexShrink: 0, transition: 'border-color 0.25s ease', display: 'flex', alignItems: 'center', justifyContent: 'space-between' }}>
+        <button
+          type="button"
+          onClick={() => setSavedItemsModalOpen(true)}
+          style={{
+            background: 'none', border: 'none', cursor: 'pointer', color: '#888',
+            display: 'flex', alignItems: 'center', padding: '4px', borderRadius: '4px'
+          }}
+          title="Reading list"
+          onMouseEnter={(e) => { e.currentTarget.style.color = '#e5e5e5'; e.currentTarget.style.backgroundColor = 'rgba(255, 255, 255, 0.1)'; }}
+          onMouseLeave={(e) => { e.currentTarget.style.color = '#888'; e.currentTarget.style.backgroundColor = 'transparent'; }}
+        >
+          <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+            <path d="M19 21l-7-5-7 5V5a2 2 0 0 1 2-2h10a2 2 0 0 1 2 2z"></path>
+          </svg>
+        </button>
+        <div style={{ fontSize: '11px', color: '#888' }}>
           {tabs.length} tab{tabs.length !== 1 ? 's' : ''} open
         </div>
+        <div style={{ width: '24px' }} />
       </div>
 
       {/* Spaces bar */}
@@ -1533,6 +1579,47 @@ export default function App() {
         </div>
       )}
 
+      {/* Saved Items Modal */}
+      {savedItemsModalOpen && (
+        <div className="space-modal-backdrop" onClick={() => setSavedItemsModalOpen(false)}>
+          <div className="space-modal" onClick={(e) => e.stopPropagation()} style={{ width: '90%', maxWidth: '400px', maxHeight: '80vh', display: 'flex', flexDirection: 'column' }}>
+            <h2 className="space-modal__title" style={{ marginBottom: '16px' }}>Reading list</h2>
+            
+            <div style={{ flex: 1, overflowY: 'auto' }}>
+              {savedItems.length === 0 ? (
+                <div style={{ textAlign: 'center', color: '#888', padding: '32px 0' }}>Reading list is empty</div>
+              ) : (
+                savedItems.map(item => (
+                  <div key={item.id} style={{ display: 'flex', alignItems: 'center', padding: '8px', gap: '8px', borderRadius: '8px', cursor: 'pointer', backgroundColor: 'rgba(255,255,255,0.02)', marginBottom: '4px' }}
+                    onClick={() => {
+                      sendMessage({ type: 'CREATE_TAB', url: item.url });
+                      sendMessage({ type: 'REMOVE_SAVED_ITEM', url: item.url });
+                      setSavedItemsModalOpen(false);
+                    }}
+                    onMouseEnter={e => e.currentTarget.style.backgroundColor = 'rgba(255,255,255,0.06)'}
+                    onMouseLeave={e => e.currentTarget.style.backgroundColor = 'rgba(255,255,255,0.02)'}
+                  >
+                    {item.favIconUrl ? (
+                      <img src={item.favIconUrl} alt="" style={{ width: 16, height: 16, flexShrink: 0 }} />
+                    ) : (
+                      <div style={{ width: 16, height: 16, backgroundColor: '#333', borderRadius: '50%', flexShrink: 0 }} />
+                    )}
+                    <div style={{ flex: 1, minWidth: 0 }}>
+                      <div style={{ fontSize: '12px', color: '#e5e5e5', whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis' }}>{item.title}</div>
+                      <div style={{ fontSize: '10px', color: '#888', whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis' }}>
+                        {(() => { try { return new URL(item.url).hostname; } catch(e) { return item.url; } })()}
+                      </div>
+                    </div>
+                    <button type="button" onClick={(e) => { e.stopPropagation(); sendMessage({ type: 'REMOVE_SAVED_ITEM', url: item.url }); }}
+                      style={{ background: 'none', border: 'none', color: '#888', cursor: 'pointer', padding: '4px' }}>✕</button>
+                  </div>
+                ))
+              )}
+            </div>
+          </div>
+        </div>
+      )}
+
       {/* Context Menu */}
       {contextMenu && (
         <ContextMenu
@@ -1546,6 +1633,7 @@ export default function App() {
           isMuted={contextMenu.tab.mutedInfo?.muted ?? false}
           onTogglePin={handleTogglePin}
           isPinned={contextMenu.tab.pinned}
+          onSaveForLater={handleSaveForLater}
         />
       )}
     </div>

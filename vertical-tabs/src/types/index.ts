@@ -18,6 +18,14 @@ export interface SpaceRule {
   priority: number;
 }
 
+export interface SavedItem {
+  id: string;
+  url: string;
+  title: string;
+  favIconUrl?: string;
+  savedAt: number;
+}
+
 // Space/Workspace
 export interface Space {
   id: string;
@@ -69,6 +77,7 @@ export interface UserSettings {
   /** Minimum score [0-1] required to auto-assign a tab. Defaults to 0.45 */
   similarityThreshold: number;
   staleTabThresholdDays: number;
+  useNativeReadingList: boolean;
 }
 
 // Persisted state shape
@@ -76,4 +85,5 @@ export interface PersistedState {
   spaces: Space[];
   settings: UserSettings;
   tabMetadata: Record<number, { spaceId?: string; lastActiveAt?: number; createdAt?: number; domain?: string; subdomains?: string[]; keywords?: string[]; autoAssigned?: boolean; }>;
+  savedItems: SavedItem[];
 }

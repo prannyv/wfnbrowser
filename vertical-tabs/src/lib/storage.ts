@@ -1,4 +1,4 @@
-import type { Space, UserSettings, PersistedState } from '@/types';
+import type { Space, UserSettings, PersistedState, SavedItem } from '@/types';
 
 // ============================================
 // Storage Keys
@@ -9,6 +9,7 @@ const STORAGE_KEYS = {
   SETTINGS: 'user_settings',
   SPACES: 'spaces',
   TAB_METADATA: 'tab_metadata',
+  SAVED_ITEMS: 'saved_items',
 } as const;
 
 const CURRENT_SCHEMA_VERSION = 2;
@@ -24,6 +25,7 @@ const DEFAULT_SETTINGS: UserSettings = {
   autoAssignSpaces: true,
   similarityThreshold: 0.45,
   staleTabThresholdDays: 7,
+  useNativeReadingList: false,
 };
 
 const DEFAULT_SPACE: Space = {
@@ -146,17 +148,30 @@ export async function removeTabMetadata(tabId: number): Promise<void> {
 }
 
 // ============================================
+// Saved Items
+// ============================================
+export async function loadSavedItems(): Promise<SavedItem[]> {
+  const result = await chrome.storage.local.get(STORAGE_KEYS.SAVED_ITEMS);
+  return (result[STORAGE_KEYS.SAVED_ITEMS] as SavedItem[] | undefined) ?? [];
+}
+
+export async function saveSavedItems(items: SavedItem[]): Promise<void> {
+  await chrome.storage.local.set({ [STORAGE_KEYS.SAVED_ITEMS]: items });
+}
+
+// ============================================
 // Full Persisted State
 // ============================================
 export async function loadPersistedState(): Promise<PersistedState> {
   await migrateStorageIfNeeded();
-  const [settings, spaces, tabMetadata] = await Promise.all([
+  const [settings, spaces, tabMetadata, savedItems] = await Promise.all([
     loadSettings(),
     loadSpaces(),
     loadTabMetadata(),
+    loadSavedItems(),
   ]);
 
-  return { settings, spaces, tabMetadata };
+  return { settings, spaces, tabMetadata, savedItems };
 }
 
 export async function savePersistedState(state: Partial<PersistedState>): Promise<void> {
@@ -171,6 +186,9 @@ export async function savePersistedState(state: Partial<PersistedState>): Promis
   if (state.tabMetadata) {
     updates[STORAGE_KEYS.TAB_METADATA] = state.tabMetadata;
   }
+  if (state.savedItems) {
+    updates[STORAGE_KEYS.SAVED_ITEMS] = state.savedItems;
+  }
 
   if (Object.keys(updates).length > 0) {
     await chrome.storage.local.set(updates);
@@ -184,6 +202,7 @@ export class StateManager {
   private spaces: Space[] = [DEFAULT_SPACE];
   private settings: UserSettings = DEFAULT_SETTINGS;
   private tabMetadata: TabMetadata = {};
+  private savedItems: SavedItem[] = [];
   private saveDebounceTimer: ReturnType<typeof setTimeout> | null = null;
   private readonly SAVE_DEBOUNCE_MS = 500;
   private initialized = false;
@@ -201,6 +220,7 @@ export class StateManager {
     this.spaces = persisted.spaces;
     this.settings = persisted.settings;
     this.tabMetadata = persisted.tabMetadata;
+    this.savedItems = persisted.savedItems;
     this.rebuildSpaceTabIds();
     this.initialized = true;
 
@@ -226,6 +246,42 @@ export class StateManager {
    */
   getTabMetadata(): TabMetadata {
     return this.tabMetadata;
+  }
+
+  /**
+   * Get saved items
+   */
+  getSavedItems(): SavedItem[] {
+    return this.savedItems;
+  }
+
+  /**
+   * Set saved items completely (e.g for import)
+   */
+  setSavedItems(items: SavedItem[]): void {
+    this.savedItems = items;
+    this.scheduleSave({ immediate: true });
+    this.notifyListeners();
+  }
+
+  /**
+   * Add a single saved item
+   */
+  addSavedItem(item: SavedItem): void {
+    if (!this.savedItems.some(i => i.id === item.id || i.url === item.url)) {
+      this.savedItems.unshift(item);
+      this.scheduleSave({ immediate: true });
+      this.notifyListeners();
+    }
+  }
+
+  /**
+   * Remove a single saved item
+   */
+  removeSavedItem(idOrUrl: string): void {
+    this.savedItems = this.savedItems.filter(i => i.id !== idOrUrl && i.url !== idOrUrl);
+    this.scheduleSave({ immediate: true });
+    this.notifyListeners();
   }
 
   /**
@@ -436,6 +492,7 @@ export class StateManager {
       spaces: this.spaces,
       settings: this.settings,
       tabMetadata: this.tabMetadata,
+      savedItems: this.savedItems,
     });
   }
 
