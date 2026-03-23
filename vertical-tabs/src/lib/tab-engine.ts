@@ -365,7 +365,10 @@ class TabEngine {
     return this.state.tabs.get(tabId);
   }
 
-  updateTabMetadata(tabId: number, metadata: Partial<Pick<ExtendedTab, 'spaceId' | 'lastActiveAt'>>): void {
+  updateTabMetadata(
+    tabId: number,
+    metadata: Partial<Pick<ExtendedTab, 'spaceId' | 'lastActiveAt' | 'openCount' | 'totalTimeMs' | 'lastOpenedAt'>>
+  ): void {
     const tab = this.state.tabs.get(tabId);
     if (tab) {
       Object.assign(tab, metadata);

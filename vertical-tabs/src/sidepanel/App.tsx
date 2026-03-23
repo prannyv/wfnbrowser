@@ -6,6 +6,7 @@ import type { ExtendedTab, Space } from '@/types';
 import { sendMessage, onMessage } from '@/lib/messages';
 import Tab from './Tab';
 import ContextMenu from './ContextMenu';
+import TabAnalyticsConsole from './TabAnalyticsConsole';
 
 const DEFAULT_SPACE_ID = 'default';
 const ALL_TABS_ID = 'all';
@@ -143,6 +144,7 @@ export default function App() {
   const [dismissedStaleGroupKeys, setDismissedStaleGroupKeys] = useState<Set<string>>(new Set());
   const [stalePromptIndexBySpace, setStalePromptIndexBySpace] = useState<Record<string, number>>({});
   const [expandedStaleGroupKeys, setExpandedStaleGroupKeys] = useState<Set<string>>(new Set());
+  const [activeView, setActiveView] = useState<'tabs' | 'analytics'>('tabs');
   const scrollContainerRef = useRef<HTMLDivElement>(null);
   const autoScrollIntervalRef = useRef<ReturnType<typeof setInterval> | null>(null);
   const emojiPickerRef = useRef<HTMLDivElement>(null);
@@ -1022,16 +1024,21 @@ export default function App() {
       </div>
 
       {/* Tab list - scrollable */}
-      <div
-        ref={carouselOuterRef}
-        style={{
-          flex: 1,
-          minHeight: 0,
-          overflow: 'hidden',
-          display: 'flex',
-          flexDirection: 'column',
-        }}
-      >
+      {activeView === 'analytics' ? (
+        <div style={{ flex: 1, minHeight: 0 }}>
+          <TabAnalyticsConsole tabs={tabs} spaces={spaces} />
+        </div>
+      ) : (
+        <div
+          ref={carouselOuterRef}
+          style={{
+            flex: 1,
+            minHeight: 0,
+            overflow: 'hidden',
+            display: 'flex',
+            flexDirection: 'column',
+          }}
+        >
         <div
           style={{
             display: 'flex',
@@ -1298,7 +1305,8 @@ export default function App() {
             );
           })}
         </div>
-      </div>
+        </div>
+      )}
 
       {/* Drag ghost */}
       {dragGhostPos && draggedTab && (() => {
@@ -1397,6 +1405,16 @@ export default function App() {
               </div>
             </div>
           ))}
+
+          <button
+            type="button"
+            className="space-pill-add"
+            onClick={() => setActiveView(activeView === 'tabs' ? 'analytics' : 'tabs')}
+            aria-label="Toggle analytics"
+            title="Analytics"
+          >
+            📊
+          </button>
 
           <button
             type="button"

@@ -3,6 +3,9 @@ export interface ExtendedTab extends chrome.tabs.Tab {
   lastActiveAt?: number;
   createdAt?: number;
   spaceId?: string;
+  openCount?: number;
+  totalTimeMs?: number;
+  lastOpenedAt?: number;
 }
 
 // Window with metadata
@@ -75,5 +78,16 @@ export interface UserSettings {
 export interface PersistedState {
   spaces: Space[];
   settings: UserSettings;
-  tabMetadata: Record<number, { spaceId?: string; lastActiveAt?: number; createdAt?: number; domain?: string; subdomains?: string[]; keywords?: string[]; autoAssigned?: boolean; }>;
+  tabMetadata: Record<number, {
+    spaceId?: string;
+    lastActiveAt?: number;
+    createdAt?: number;
+    openCount?: number;
+    totalTimeMs?: number;
+    lastOpenedAt?: number;
+    domain?: string;
+    subdomains?: string[];
+    keywords?: string[];
+    autoAssigned?: boolean;
+  }>;
 }
