@@ -10,14 +10,13 @@ interface TopSiteItem {
 
 interface TopSitesConfig {
   mode: TopSitesMode;
-  count: number;
 }
 
 const TOP_SITES_STORAGE_KEY = 'newtab-topsites-config';
 const REMOVED_URLS_STORAGE_KEY = 'newtab-topsites-removed';
+const REMOVED_DOMAINS_STORAGE_KEY = 'newtab-topsites-removed-domains';
 const MANUAL_SITES_STORAGE_KEY = 'newtab-topsites-manual';
-const DEFAULT_TOP_SITES_COUNT = 8;
-const MAX_TOP_SITES_COUNT = 16;
+const TOP_SITES_COUNT = 4;
 
 interface SearchResult {
   id: string;
@@ -56,6 +55,27 @@ function isUrl(query: string): boolean {
     /^[a-z0-9]+([\-.]{1}[a-z0-9]+)*\.[a-z]{2,}(\/.*)?$/i.test(query);
 }
 
+/** Extract base domain from URL for grouping (e.g. www.reddit.com -> reddit.com) */
+function getBaseDomain(url: string): string {
+  try {
+    const hostname = new URL(url).hostname;
+    return hostname.replace(/^www\./, '');
+  } catch {
+    return url;
+  }
+}
+
+/** Build base site URL (e.g. https://reddit.com) from any page URL */
+function getBaseUrl(url: string): string {
+  try {
+    const u = new URL(url);
+    const host = u.hostname.replace(/^www\./, '');
+    return `${u.protocol}//${host}${u.port && u.port !== '80' && u.port !== '443' ? ':' + u.port : ''}`;
+  } catch {
+    return url;
+  }
+}
+
 export default function App() {
   const [query, setQuery] = useState('');
   const [results, setResults] = useState<SearchResult[]>([]);
@@ -66,13 +86,10 @@ export default function App() {
   const [bottomBookmarks, setBottomBookmarks] = useState<BookmarkItem[]>([]);
   const [bottomDownloads, setBottomDownloads] = useState<DownloadItem[]>([]);
   const [topSites, setTopSites] = useState<TopSiteItem[]>([]);
-  const [topSitesConfig, setTopSitesConfig] = useState<TopSitesConfig>({
-    mode: 'frequent',
-    count: DEFAULT_TOP_SITES_COUNT,
-  });
+  const [topSitesConfig, setTopSitesConfig] = useState<TopSitesConfig>({ mode: 'frequent' });
   const [removedUrls, setRemovedUrls] = useState<Set<string>>(new Set());
+  const [removedDomains, setRemovedDomains] = useState<Set<string>>(new Set());
   const [manualSites, setManualSites] = useState<TopSiteItem[]>([]);
-  const [topSitesSettingsOpen, setTopSitesSettingsOpen] = useState(false);
   const [addSiteUrl, setAddSiteUrl] = useState('');
   const [addSiteOpen, setAddSiteOpen] = useState(false);
   const inputRef = useRef<HTMLInputElement>(null);
@@ -157,14 +174,18 @@ export default function App() {
 
   // Load top sites config from storage
   useEffect(() => {
-    chrome.storage.local.get([TOP_SITES_STORAGE_KEY, REMOVED_URLS_STORAGE_KEY, MANUAL_SITES_STORAGE_KEY]).then((result: Record<string, unknown>) => {
+    chrome.storage.local.get([TOP_SITES_STORAGE_KEY, REMOVED_URLS_STORAGE_KEY, REMOVED_DOMAINS_STORAGE_KEY, MANUAL_SITES_STORAGE_KEY]).then((result: Record<string, unknown>) => {
       const cfg = result[TOP_SITES_STORAGE_KEY] as TopSitesConfig | undefined;
       if (cfg && typeof cfg === 'object' && 'mode' in cfg) {
-        setTopSitesConfig(cfg);
+        setTopSitesConfig({ mode: cfg.mode });
       }
       const removed = result[REMOVED_URLS_STORAGE_KEY] as string[] | undefined;
       if (Array.isArray(removed)) {
         setRemovedUrls(new Set(removed));
+      }
+      const removedD = result[REMOVED_DOMAINS_STORAGE_KEY] as string[] | undefined;
+      if (Array.isArray(removedD)) {
+        setRemovedDomains(new Set(removedD));
       }
       const manual = result[MANUAL_SITES_STORAGE_KEY] as TopSiteItem[] | undefined;
       if (Array.isArray(manual)) {
@@ -176,7 +197,8 @@ export default function App() {
   const loadTopSites = useCallback(async () => {
     const config = topSitesConfig;
     const removed = removedUrls;
-    const limit = Math.min(Math.max(1, config.count), MAX_TOP_SITES_COUNT);
+    const removedD = removedDomains;
+    const limit = TOP_SITES_COUNT;
 
     try {
       if (config.mode === 'manual') {
@@ -186,14 +208,20 @@ export default function App() {
 
       if (config.mode === 'frequent') {
         const items = await chrome.topSites.get();
-        const filtered = items
-          .filter((i) => !removed.has(i.url) && !i.url.startsWith('chrome://') && !i.url.startsWith('chrome-extension://'))
-          .slice(0, limit)
-          .map((i) => ({
-            url: i.url,
-            title: i.title || new URL(i.url).hostname || i.url,
-          }));
-        setTopSites(filtered);
+        const byDomain = new Map<string, { url: string; title: string }>();
+        for (const i of items) {
+          if (!i.url || i.url.startsWith('chrome://') || i.url.startsWith('chrome-extension://') || removed.has(i.url)) continue;
+          const domain = getBaseDomain(i.url);
+          if (removedD.has(domain)) continue;
+          if (!byDomain.has(domain)) {
+            byDomain.set(domain, {
+              url: getBaseUrl(i.url),
+              title: domain,
+            });
+          }
+          if (byDomain.size >= limit) break;
+        }
+        setTopSites(Array.from(byDomain.values()).slice(0, limit));
         return;
       }
 
@@ -203,26 +231,26 @@ export default function App() {
           maxResults: 100,
           startTime: 0,
         });
-        const seen = new Set<string>();
-        const filtered: TopSiteItem[] = [];
+        const byDomain = new Map<string, { url: string; title: string }>();
         for (const h of historyItems) {
           if (!h.url || h.url.startsWith('chrome://') || h.url.startsWith('chrome-extension://') || removed.has(h.url)) continue;
-          const norm = h.url.replace(/\/$/, '');
-          if (seen.has(norm)) continue;
-          seen.add(norm);
-          filtered.push({
-            url: h.url,
-            title: h.title || new URL(h.url).hostname || h.url,
-          });
-          if (filtered.length >= limit) break;
+          const domain = getBaseDomain(h.url);
+          if (removedD.has(domain)) continue;
+          if (!byDomain.has(domain)) {
+            byDomain.set(domain, {
+              url: getBaseUrl(h.url),
+              title: domain,
+            });
+          }
+          if (byDomain.size >= limit) break;
         }
-        setTopSites(filtered);
+        setTopSites(Array.from(byDomain.values()).slice(0, limit));
       }
     } catch (e) {
       console.error('[NewTab] Load top sites error:', e);
       setTopSites([]);
     }
-  }, [topSitesConfig, removedUrls, manualSites]);
+  }, [topSitesConfig, removedUrls, removedDomains, manualSites]);
 
   useEffect(() => {
     loadTopSites();
@@ -235,13 +263,14 @@ export default function App() {
         setManualSites(next);
         chrome.storage.local.set({ [MANUAL_SITES_STORAGE_KEY]: next });
       } else {
-        const next = new Set(removedUrls);
-        next.add(url);
-        setRemovedUrls(next);
-        chrome.storage.local.set({ [REMOVED_URLS_STORAGE_KEY]: Array.from(next) });
+        const domain = getBaseDomain(url);
+        const next = new Set(removedDomains);
+        next.add(domain);
+        setRemovedDomains(next);
+        chrome.storage.local.set({ [REMOVED_DOMAINS_STORAGE_KEY]: Array.from(next) });
       }
     },
-    [topSitesConfig.mode, manualSites, removedUrls]
+    [topSitesConfig.mode, manualSites, removedDomains]
   );
 
   const updateTopSitesConfig = useCallback((updates: Partial<TopSitesConfig>) => {
@@ -498,71 +527,27 @@ export default function App() {
       {!query.trim() && (topSites.length > 0 || topSitesConfig.mode === 'manual') && (
         <div className="newtab-topsites">
           <div className="newtab-topsites-header">
-            <span className="newtab-topsites-title">
-              {topSitesConfig.mode === 'frequent' ? 'Frequent' : topSitesConfig.mode === 'recent' ? 'Recent' : 'Shortcuts'}
-            </span>
-            <div className="newtab-topsites-actions">
-              {topSitesConfig.mode === 'manual' && (
-                <button
-                  type="button"
-                  className="newtab-topsites-add-btn"
-                  onClick={() => setAddSiteOpen(true)}
-                  title="Add site"
-                  aria-label="Add site"
-                >
-                  +
-                </button>
-              )}
-              <div className="newtab-topsites-settings-wrap">
-                <button
-                  type="button"
-                  className="newtab-topsites-settings-btn"
-                  onClick={() => setTopSitesSettingsOpen((o) => !o)}
-                  title="Settings"
-                  aria-label="Top sites settings"
-                  aria-expanded={topSitesSettingsOpen}
-                >
-                  ⚙
-                </button>
-                {topSitesSettingsOpen && (
-                  <>
-                    <div
-                      className="newtab-topsites-settings-backdrop"
-                      onClick={() => setTopSitesSettingsOpen(false)}
-                      aria-hidden="true"
-                    />
-                    <div className="newtab-topsites-settings-popover">
-                      <div className="newtab-topsites-settings-row">
-                        <label>Mode</label>
-                        <select
-                          value={topSitesConfig.mode}
-                          onChange={(e) => updateTopSitesConfig({ mode: e.target.value as TopSitesMode })}
-                          className="newtab-topsites-select"
-                        >
-                          <option value="frequent">Frequent</option>
-                          <option value="recent">Recent</option>
-                          <option value="manual">Manual</option>
-                        </select>
-                      </div>
-                      <div className="newtab-topsites-settings-row">
-                        <label>Count</label>
-                        <select
-                          value={topSitesConfig.count}
-                          onChange={(e) => updateTopSitesConfig({ count: parseInt(e.target.value, 10) })}
-                          className="newtab-topsites-select"
-                        >
-                          {[4, 6, 8, 10, 12, 16].map((n) => (
-                            <option key={n} value={n}>
-                              {n}
-                            </option>
-                          ))}
-                        </select>
-                      </div>
-                    </div>
-                  </>
-                )}
-              </div>
-            </div>
+            <select
+              value={topSitesConfig.mode}
+              onChange={(e) => updateTopSitesConfig({ mode: e.target.value as TopSitesMode })}
+              className="newtab-topsites-mode-select"
+              aria-label="Top sites mode"
+            >
+              <option value="frequent">Frequent</option>
+              <option value="recent">Recent</option>
+              <option value="manual">Shortcuts</option>
+            </select>
+            {topSitesConfig.mode === 'manual' && (
+              <button
+                type="button"
+                className="newtab-topsites-add-btn"
+                onClick={() => setAddSiteOpen(true)}
+                title="Add site"
+                aria-label="Add site"
+              >
+                +
+              </button>
+            )}
           </div>
           <div className="newtab-topsites-grid">
             {topSites.length === 0 && topSitesConfig.mode === 'manual' && (

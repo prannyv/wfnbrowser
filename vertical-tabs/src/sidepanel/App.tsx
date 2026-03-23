@@ -68,20 +68,23 @@ interface SpaceTheme {
   spacesBarBorder: string;
 }
 
+/* Main area (bg) is a lighter version of the spaces bar below */
 const DEFAULT_THEME: SpaceTheme = {
-  bg: BASE_BG,
+  bg: '#2c2c30',
   inputBg: '#2a2a2a',
   border: '#333',
-  spacesBarBg: 'linear-gradient(0deg, rgba(30, 30, 32, 0.98) 0%, rgba(22, 22, 24, 0.98) 100%)',
+  spacesBarBg: 'linear-gradient(0deg, rgba(36, 36, 40, 0.98) 0%, rgba(32, 32, 35, 0.98) 100%)',
   spacesBarBorder: 'rgba(255, 255, 255, 0.06)',
 };
 
 function buildSpaceTheme(hex: string): SpaceTheme {
+  const spacesBarBase = '#1a1a1c';
+  const spacesBarBlend = blendWithBase(hex, spacesBarBase, 0.30);
   return {
-    bg: blendWithBase(hex, BASE_BG, 0.35),
+    bg: blendWithBase(hex, '#28282c', 0.38),
     inputBg: blendWithBase(hex, '#2a2a2a', 0.30),
     border: blendWithBase(hex, '#333333', 0.25),
-    spacesBarBg: blendWithBase(hex, '#1a1a1c', 0.30),
+    spacesBarBg: spacesBarBlend,
     spacesBarBorder: blendWithBase(hex, '#333333', 0.20),
   };
 }
@@ -938,7 +941,7 @@ export default function App() {
     <div
       ref={rootRef}
       className={`sidepanel-root${isClosing ? ' sidepanel-root--closing' : ''}`}
-      style={{ display: 'flex', flexDirection: 'column', height: '100%' }}
+      style={{ display: 'flex', flexDirection: 'column', height: '100%', backgroundColor: theme.bg, transition: 'background-color 0.25s ease' }}
       onTouchStart={handleTouchStart}
       onTouchMove={handleTouchMove}
       onTouchEnd={handleTouchEnd}
