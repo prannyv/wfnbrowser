@@ -18,6 +18,37 @@ let hasRegisteredSpaceListeners = false;
 let uiActiveSpaceId: string = DEFAULT_SPACE_ID;
 let assigner: InstanceType<typeof TabAssigner> | null = null;
 
+async function focusExistingTab(existingTabId: number): Promise<boolean> {
+  try {
+    const tab = await chrome.tabs.get(existingTabId);
+    if (!tab.id || !tab.windowId) return false;
+    await chrome.tabs.update(tab.id, { active: true });
+    await chrome.windows.update(tab.windowId, { focused: true });
+    return true;
+  } catch {
+    return false;
+  }
+}
+
+function resolveInputToUrl(input: string): string {
+  const trimmed = input.trim();
+  if (!trimmed) return '';
+  if (/^https?:\/\//i.test(trimmed)) return trimmed;
+  if (/^www\./i.test(trimmed)) return `https://${trimmed}`;
+  if (/^[a-z0-9-]+$/i.test(trimmed)) return `https://www.${trimmed.toLowerCase()}.com`;
+  if (/^[a-z0-9]+([\-.]{1}[a-z0-9]+)*\.[a-z]{2,}([/?].*)?$/i.test(trimmed)) return `https://${trimmed}`;
+  return trimmed.startsWith('http://') || trimmed.startsWith('https://') ? trimmed : `https://${trimmed}`;
+}
+
+async function findExactDuplicateTabId(incomingUrl: string): Promise<number | null> {
+  const tabs = await chrome.tabs.query({});
+  for (const tab of tabs) {
+    if (!tab.id || !tab.url) continue;
+    if (tab.url === incomingUrl) return tab.id;
+  }
+  return null;
+}
+
 // ============================================
 // Tab Inactivity Tracking
 // ============================================
@@ -349,6 +380,29 @@ async function handleMessage(
       case 'MUTE_TAB': {
         await chrome.tabs.update(message.tabId, { muted: message.muted });
         sendResponse({ success: true });
+        break;
+      }
+
+      case 'RESOLVE_NAVIGATION_INPUT': {
+        const resolvedUrl = resolveInputToUrl(message.input);
+        const exactMatchTabId = await findExactDuplicateTabId(resolvedUrl);
+
+        if (exactMatchTabId !== null) {
+          await focusExistingTab(exactMatchTabId);
+          sendResponse({
+            success: true,
+            action: 'switched',
+            resolvedUrl,
+            existingTabId: exactMatchTabId,
+          });
+          break;
+        }
+
+        sendResponse({
+          success: true,
+          action: 'open',
+          resolvedUrl,
+        });
         break;
       }
 

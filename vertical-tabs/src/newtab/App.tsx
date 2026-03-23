@@ -385,8 +385,16 @@ export default function App() {
     }
     if (!query.trim()) return;
     if (isUrl(query)) {
-      const url = query.startsWith('http') ? query : `https://${query}`;
-      window.location.href = url;
+      chrome.runtime.sendMessage({ type: 'RESOLVE_NAVIGATION_INPUT', input: query })
+        .then((response: { action?: 'switched' | 'open'; resolvedUrl?: string }) => {
+          if (response?.action !== 'switched' && response?.resolvedUrl) {
+            window.location.href = response.resolvedUrl;
+          }
+        })
+        .catch(() => {
+          const fallbackUrl = query.startsWith('http') ? query : `https://${query}`;
+          window.location.href = fallbackUrl;
+        });
     } else {
       window.location.href = `https://www.google.com/search?q=${encodeURIComponent(query)}`;
     }
