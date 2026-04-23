@@ -36,7 +36,20 @@ const SPACE_COLORS = [
 
 const BASE_BG = '#292a2d';
 
+const COLLAPSED_DOMAINS_KEY = 'domain-group-collapsed';
 
+function getHostname(url?: string): string {
+  if (!url) return '';
+  try {
+    return new URL(url).hostname.replace(/^www\./, '');
+  } catch {
+    return '';
+  }
+}
+
+type DomainRenderItem =
+  | { kind: 'solo'; tab: ExtendedTab; sortKey: number }
+  | { kind: 'group'; domain: string; tabs: ExtendedTab[]; sortKey: number; faviconUrl?: string };
 
 interface SpaceTheme {
   bg: string;
@@ -117,6 +130,14 @@ export default function App() {
   const emojiPickerRef = useRef<HTMLDivElement>(null);
   const [savedItems, setSavedItems] = useState<SavedItem[]>([]);
   const [savedItemsModalOpen, setSavedItemsModalOpen] = useState(false);
+  const [collapsedDomains, setCollapsedDomains] = useState<Set<string>>(() => {
+    try {
+      const stored = localStorage.getItem(COLLAPSED_DOMAINS_KEY);
+      return stored ? new Set<string>(JSON.parse(stored) as string[]) : new Set<string>();
+    } catch {
+      return new Set<string>();
+    }
+  });
 
   const emojiPickerOpenRef = useRef(false);
   emojiPickerOpenRef.current = emojiPickerOpen;
@@ -845,6 +866,33 @@ export default function App() {
     return result;
   }, [tabs, spaceIds, activeTabId]);
 
+  const domainGroupsPerSpace = useMemo(() => {
+    const result: Record<string, DomainRenderItem[]> = {};
+    for (const spaceId of spaceIds) {
+      const regular = tabsPerSpace[spaceId]?.regular ?? [];
+      const domainMap = new Map<string, ExtendedTab[]>();
+      for (const tab of regular) {
+        const domain = getHostname(tab.url);
+        const key = domain || `__solo_${tab.id}`;
+        if (!domainMap.has(key)) domainMap.set(key, []);
+        domainMap.get(key)!.push(tab);
+      }
+      const items: DomainRenderItem[] = [];
+      for (const [key, domainTabs] of domainMap) {
+        const sortKey = Math.max(...domainTabs.map(t => t.lastActiveAt ?? t.lastAccessed ?? 0));
+        if (domainTabs.length === 1 || key.startsWith('__solo_')) {
+          items.push({ kind: 'solo', tab: domainTabs[0], sortKey });
+        } else {
+          const faviconUrl = domainTabs.find(t => t.favIconUrl)?.favIconUrl;
+          items.push({ kind: 'group', domain: key, tabs: domainTabs, sortKey, faviconUrl });
+        }
+      }
+      items.sort((a, b) => b.sortKey - a.sortKey);
+      result[spaceId] = items;
+    }
+    return result;
+  }, [tabsPerSpace, spaceIds]);
+
   useEffect(() => {
     const activeKeys = new Set(
       Object.values(staleGroupsPerSpace)
@@ -922,6 +970,20 @@ export default function App() {
       } else {
         next.delete(groupKey);
       }
+      return next;
+    });
+  }, []);
+
+  useEffect(() => {
+    try {
+      localStorage.setItem(COLLAPSED_DOMAINS_KEY, JSON.stringify([...collapsedDomains]));
+    } catch {}
+  }, [collapsedDomains]);
+
+  const toggleDomainCollapsed = useCallback((domain: string) => {
+    setCollapsedDomains(prev => {
+      const next = new Set(prev);
+      if (next.has(domain)) next.delete(domain); else next.add(domain);
       return next;
     });
   }, []);
@@ -1274,21 +1336,102 @@ export default function App() {
                     onDragLeave={handleDragLeaveRegular}
                     onDrop={handleDropRegular}
                   >
-                    {regular.map((tab) => (
-                      <Tab
-                        key={tab.id}
-                        tab={tab}
-                        isActive={tab.id === activeTabId}
-                        searchHighlightQuery={searchQuery || undefined}
-                        variant="default"
-                        fullWidth
-                        onClick={() => handleTabClick(tab)}
-                        onClose={(e) => tab.id && handleCloseTab(e, tab.id)}
-                        onContextMenu={(e) => handleContextMenu(e, tab)}
-                        onDragStart={handleDragStart(tab)}
-                        onDragEnd={handleDragEnd}
-                      />
-                    ))}
+                    {(domainGroupsPerSpace[spaceId] ?? []).map((item) => {
+                      if (item.kind === 'solo') {
+                        return (
+                          <Tab
+                            key={item.tab.id}
+                            tab={item.tab}
+                            isActive={item.tab.id === activeTabId}
+                            searchHighlightQuery={searchQuery || undefined}
+                            variant="default"
+                            fullWidth
+                            onClick={() => handleTabClick(item.tab)}
+                            onClose={(e) => item.tab.id && handleCloseTab(e, item.tab.id)}
+                            onContextMenu={(e) => handleContextMenu(e, item.tab)}
+                            onDragStart={handleDragStart(item.tab)}
+                            onDragEnd={handleDragEnd}
+                          />
+                        );
+                      }
+                      const isCollapsed = collapsedDomains.has(item.domain);
+                      const hasActiveTab = item.tabs.some(t => t.id === activeTabId);
+                      return (
+                        <div key={item.domain} style={{ marginBottom: '2px' }}>
+                          <button
+                            type="button"
+                            onClick={() => toggleDomainCollapsed(item.domain)}
+                            style={{
+                              display: 'flex',
+                              alignItems: 'center',
+                              gap: '6px',
+                              width: '100%',
+                              padding: '4px 8px',
+                              background: 'none',
+                              border: 'none',
+                              borderRadius: '6px',
+                              cursor: 'pointer',
+                              color: '#9aa0a6',
+                              fontSize: '11px',
+                              fontWeight: 500,
+                              letterSpacing: '0.02em',
+                              textAlign: 'left',
+                              borderLeft: hasActiveTab ? '2px solid #8ab4f8' : '2px solid transparent',
+                            }}
+                            onMouseEnter={e => { e.currentTarget.style.backgroundColor = 'rgba(255,255,255,0.06)'; e.currentTarget.style.color = '#e8eaed'; }}
+                            onMouseLeave={e => { e.currentTarget.style.backgroundColor = 'transparent'; e.currentTarget.style.color = '#9aa0a6'; }}
+                          >
+                            {item.faviconUrl ? (
+                              <img src={item.faviconUrl} alt="" style={{ width: 14, height: 14, flexShrink: 0, borderRadius: 2 }} />
+                            ) : (
+                              <div style={{ width: 14, height: 14, flexShrink: 0, backgroundColor: '#5f6368', borderRadius: 3 }} />
+                            )}
+                            <span style={{ flex: 1, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>
+                              {item.domain}
+                            </span>
+                            <span style={{
+                              fontSize: '10px',
+                              backgroundColor: 'rgba(255,255,255,0.1)',
+                              color: '#9aa0a6',
+                              borderRadius: '10px',
+                              padding: '1px 5px',
+                              flexShrink: 0,
+                            }}>
+                              {item.tabs.length}
+                            </span>
+                            <svg
+                              width="10" height="10" viewBox="0 0 10 10" fill="currentColor"
+                              style={{ flexShrink: 0, opacity: 0.6, transform: isCollapsed ? 'rotate(-90deg)' : 'none', transition: 'transform 0.15s ease' }}
+                            >
+                              <path d="M1.5 3.5L5 7l3.5-3.5" stroke="currentColor" strokeWidth="1.5" strokeLinecap="round" strokeLinejoin="round" fill="none" />
+                            </svg>
+                          </button>
+                          {!isCollapsed && (
+                            <div style={{
+                              marginLeft: '10px',
+                              paddingLeft: '8px',
+                              borderLeft: '2px solid rgba(255,255,255,0.07)',
+                            }}>
+                              {item.tabs.map((tab) => (
+                                <Tab
+                                  key={tab.id}
+                                  tab={tab}
+                                  isActive={tab.id === activeTabId}
+                                  searchHighlightQuery={searchQuery || undefined}
+                                  variant="default"
+                                  fullWidth
+                                  onClick={() => handleTabClick(tab)}
+                                  onClose={(e) => tab.id && handleCloseTab(e, tab.id)}
+                                  onContextMenu={(e) => handleContextMenu(e, tab)}
+                                  onDragStart={handleDragStart(tab)}
+                                  onDragEnd={handleDragEnd}
+                                />
+                              ))}
+                            </div>
+                          )}
+                        </div>
+                      );
+                    })}
                   </div>
 
                   {((tabsPerSpace[spaceId]?.filteredCount) ?? 0) === 0 && (
