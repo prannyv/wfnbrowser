@@ -273,14 +273,6 @@ export default function App() {
     [topSitesConfig.mode, manualSites, removedDomains]
   );
 
-  const updateTopSitesConfig = useCallback((updates: Partial<TopSitesConfig>) => {
-    setTopSitesConfig((prev) => {
-      const next = { ...prev, ...updates };
-      chrome.storage.local.set({ [TOP_SITES_STORAGE_KEY]: next });
-      return next;
-    });
-  }, []);
-
   const addManualSite = useCallback(
     (url: string, title?: string) => {
       try {
@@ -535,27 +527,6 @@ export default function App() {
       {!query.trim() && (topSites.length > 0 || topSitesConfig.mode === 'manual') && (
         <div className="newtab-topsites">
           <div className="newtab-topsites-header">
-            <select
-              value={topSitesConfig.mode}
-              onChange={(e) => updateTopSitesConfig({ mode: e.target.value as TopSitesMode })}
-              className="newtab-topsites-mode-select"
-              aria-label="Top sites mode"
-            >
-              <option value="frequent">Frequent</option>
-              <option value="recent">Recent</option>
-              <option value="manual">Shortcuts</option>
-            </select>
-            {topSitesConfig.mode === 'manual' && (
-              <button
-                type="button"
-                className="newtab-topsites-add-btn"
-                onClick={() => setAddSiteOpen(true)}
-                title="Add site"
-                aria-label="Add site"
-              >
-                +
-              </button>
-            )}
           </div>
           <div className="newtab-topsites-grid">
             {topSites.length === 0 && topSitesConfig.mode === 'manual' && (
@@ -691,7 +662,6 @@ export default function App() {
         </div>
       )}
 
-      <p className="newtab-footer">⌘K to focus · ⌘ Enter · Esc</p>
     </div>
   );
 }
