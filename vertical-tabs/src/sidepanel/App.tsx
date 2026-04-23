@@ -34,29 +34,9 @@ const SPACE_COLORS = [
   '#2a9d8f', '#e76f51', '#f4a261', '#9b5de5', '#00bbf9',
 ];
 
-const BASE_BG = '#1a1a1a';
+const BASE_BG = '#292a2d';
 
-function isLightColor(hex: string): boolean {
-  const h = hex.replace('#', '');
-  const full = h.length === 3 ? h.split('').map(c => c + c).join('') : h;
-  if (full.length !== 6) return false;
-  const r = parseInt(full.slice(0, 2), 16) / 255;
-  const g = parseInt(full.slice(2, 4), 16) / 255;
-  const b = parseInt(full.slice(4, 6), 16) / 255;
-  const luminance = 0.299 * r + 0.587 * g + 0.114 * b;
-  return luminance > 0.6;
-}
 
-function blendWithBase(hex: string, base: string, alpha: number): string {
-  const h = hex.replace('#', '');
-  const full = h.length === 3 ? h.split('').map(c => c + c).join('') : h;
-  const b = base.replace('#', '');
-  if (full.length !== 6 || b.length !== 6) return base;
-  const r = Math.round(parseInt(b.slice(0, 2), 16) * (1 - alpha) + parseInt(full.slice(0, 2), 16) * alpha);
-  const g = Math.round(parseInt(b.slice(2, 4), 16) * (1 - alpha) + parseInt(full.slice(2, 4), 16) * alpha);
-  const bl = Math.round(parseInt(b.slice(4, 6), 16) * (1 - alpha) + parseInt(full.slice(4, 6), 16) * alpha);
-  return `rgb(${r}, ${g}, ${bl})`;
-}
 
 interface SpaceTheme {
   bg: string;
@@ -66,25 +46,16 @@ interface SpaceTheme {
   spacesBarBorder: string;
 }
 
-/* Main area (bg) is a lighter version of the spaces bar below */
 const DEFAULT_THEME: SpaceTheme = {
-  bg: '#2c2c30',
-  inputBg: '#2a2a2a',
-  border: '#333',
-  spacesBarBg: 'linear-gradient(0deg, rgba(36, 36, 40, 0.98) 0%, rgba(32, 32, 35, 0.98) 100%)',
-  spacesBarBorder: 'rgba(255, 255, 255, 0.06)',
+  bg: '#292a2d',
+  inputBg: '#1e1f22',
+  border: 'rgba(255,255,255,0.08)',
+  spacesBarBg: '#202124',
+  spacesBarBorder: 'rgba(255,255,255,0.08)',
 };
 
-function buildSpaceTheme(hex: string): SpaceTheme {
-  const spacesBarBase = '#1a1a1c';
-  const spacesBarBlend = blendWithBase(hex, spacesBarBase, 0.30);
-  return {
-    bg: blendWithBase(hex, '#28282c', 0.38),
-    inputBg: blendWithBase(hex, '#2a2a2a', 0.30),
-    border: blendWithBase(hex, '#333333', 0.25),
-    spacesBarBg: spacesBarBlend,
-    spacesBarBorder: blendWithBase(hex, '#333333', 0.20),
-  };
+function buildSpaceTheme(_hex: string): SpaceTheme {
+  return DEFAULT_THEME;
 }
 
 const SPACE_EMOJIS = [
@@ -962,7 +933,9 @@ export default function App() {
         alignItems: 'center',
         justifyContent: 'center',
         height: '100%',
-        color: '#888'
+        color: '#9aa0a6',
+        fontSize: '13px',
+        backgroundColor: '#292a2d',
       }}>
         Loading tabs...
       </div>
@@ -985,7 +958,7 @@ export default function App() {
       onTouchCancel={handleTouchCancel}
     >
       {/* Search */}
-      <div style={{ padding: '12px', borderBottom: '1px solid #333' }}>
+      <div style={{ padding: '8px 10px', borderBottom: '1px solid rgba(255,255,255,0.08)' }}>
         <div style={{ position: 'relative', width: '100%' }}>
           <input
             type="text"
@@ -995,12 +968,12 @@ export default function App() {
             onKeyDown={handleKeyDown}
             style={{
               width: '100%',
-              padding: '8px 32px 8px 12px',
-              backgroundColor: '#2a2a2a',
-              borderRadius: '8px',
-              fontSize: '14px',
-              color: '#e5e5e5',
-              border: 'none',
+              padding: '6px 28px 6px 10px',
+              backgroundColor: '#1e1f22',
+              borderRadius: '6px',
+              fontSize: '13px',
+              color: '#e8eaed',
+              border: '1px solid rgba(255,255,255,0.08)',
               outline: 'none',
             }}
           />
@@ -1015,7 +988,7 @@ export default function App() {
                 background: 'none',
                 border: 'none',
                 cursor: 'pointer',
-                color: '#888',
+                color: '#9aa0a6',
                 padding: '4px',
                 display: 'flex',
                 alignItems: 'center',
@@ -1024,11 +997,11 @@ export default function App() {
                 transition: 'color 0.15s, background-color 0.15s',
               }}
               onMouseEnter={(e) => {
-                e.currentTarget.style.color = '#e5e5e5';
-                e.currentTarget.style.backgroundColor = 'rgba(255, 255, 255, 0.1)';
+                e.currentTarget.style.color = '#e8eaed';
+                e.currentTarget.style.backgroundColor = 'rgba(255,255,255,0.08)';
               }}
               onMouseLeave={(e) => {
-                e.currentTarget.style.color = '#888';
+                e.currentTarget.style.color = '#9aa0a6';
                 e.currentTarget.style.backgroundColor = 'transparent';
               }}
               title="Clear search"
@@ -1229,18 +1202,18 @@ export default function App() {
                   {/* Pinned tabs */}
                   {pinned.length > 0 && (
                     <div
-                      style={{ marginBottom: '16px' }}
+                      style={{ marginBottom: '12px' }}
                       onDragOver={handleDragOver}
                       onDragLeave={handleDragLeave}
                       onDrop={handleDrop}
                     >
                       <div style={{
-                        fontSize: '11px',
-                        color: '#888',
+                        fontSize: '10px',
+                        color: '#9aa0a6',
                         textTransform: 'uppercase',
-                        letterSpacing: '0.05em',
+                        letterSpacing: '0.06em',
                         padding: '0 8px',
-                        marginBottom: '8px'
+                        marginBottom: '6px'
                       }}>
                         Pinned Tabs
                       </div>
@@ -1280,12 +1253,12 @@ export default function App() {
                   {/* Regular tabs */}
                   {pinned.length > 0 && regular.length > 0 && (
                     <div style={{
-                      fontSize: '11px',
-                      color: '#888',
+                      fontSize: '10px',
+                      color: '#9aa0a6',
                       textTransform: 'uppercase',
-                      letterSpacing: '0.05em',
+                      letterSpacing: '0.06em',
                       padding: '0 8px',
-                      marginBottom: '8px'
+                      marginBottom: '6px'
                     }}>
                       Tabs ({regular.length})
                     </div>
@@ -1319,7 +1292,7 @@ export default function App() {
                   </div>
 
                   {((tabsPerSpace[spaceId]?.filteredCount) ?? 0) === 0 && (
-                    <div style={{ textAlign: 'center', color: '#888', padding: '32px 0' }}>
+                    <div style={{ textAlign: 'center', color: '#9aa0a6', padding: '32px 0', fontSize: '13px' }}>
                       {searchQuery ? 'No matching tabs' : 'No tabs open'}
                     </div>
                   )}
@@ -1368,11 +1341,11 @@ export default function App() {
           position: 'fixed',
           top: `${errorMessage.y + 10}px`,
           left: `${errorMessage.x}px`,
-          backgroundColor: '#333',
-          color: '#fff',
-          padding: '12px 20px',
-          borderRadius: '8px',
-          fontSize: '14px',
+          backgroundColor: '#3c4043',
+          color: '#e8eaed',
+          padding: '10px 16px',
+          borderRadius: '6px',
+          fontSize: '13px',
           fontWeight: '500',
           boxShadow: '0 4px 12px rgba(0, 0, 0, 0.3)',
           zIndex: 750,
@@ -1382,23 +1355,23 @@ export default function App() {
       )}
 
       {/* Footer */}
-      <div style={{ padding: '8px', borderTop: `1px solid ${theme.border}`, flexShrink: 0, transition: 'border-color 0.25s ease', display: 'flex', alignItems: 'center', justifyContent: 'space-between' }}>
+      <div style={{ padding: '6px 10px', borderTop: `1px solid ${theme.border}`, flexShrink: 0, transition: 'border-color 0.25s ease', display: 'flex', alignItems: 'center', justifyContent: 'space-between' }}>
         <button
           type="button"
           onClick={() => setSavedItemsModalOpen(true)}
           style={{
-            background: 'none', border: 'none', cursor: 'pointer', color: '#888',
+            background: 'none', border: 'none', cursor: 'pointer', color: '#9aa0a6',
             display: 'flex', alignItems: 'center', padding: '4px', borderRadius: '4px'
           }}
           title="Reading list"
-          onMouseEnter={(e) => { e.currentTarget.style.color = '#e5e5e5'; e.currentTarget.style.backgroundColor = 'rgba(255, 255, 255, 0.1)'; }}
-          onMouseLeave={(e) => { e.currentTarget.style.color = '#888'; e.currentTarget.style.backgroundColor = 'transparent'; }}
+          onMouseEnter={(e) => { e.currentTarget.style.color = '#e8eaed'; e.currentTarget.style.backgroundColor = 'rgba(255,255,255,0.08)'; }}
+          onMouseLeave={(e) => { e.currentTarget.style.color = '#9aa0a6'; e.currentTarget.style.backgroundColor = 'transparent'; }}
         >
           <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
             <path d="M19 21l-7-5-7 5V5a2 2 0 0 1 2-2h10a2 2 0 0 1 2 2z"></path>
           </svg>
         </button>
-        <div style={{ fontSize: '11px', color: '#888' }}>
+        <div style={{ fontSize: '11px', color: '#9aa0a6' }}>
           {tabs.length} tab{tabs.length !== 1 ? 's' : ''} open
         </div>
         <div style={{ width: '24px' }} />
@@ -1415,7 +1388,7 @@ export default function App() {
             All Tabs
           </button>
 
-          {spaces.map(space => (
+          {spaces.filter(s => s.id !== DEFAULT_SPACE_ID).map(space => (
             <div
               key={space.id}
               onContextMenu={handleSpaceContextMenu(space.id)}
@@ -1425,7 +1398,6 @@ export default function App() {
                 role="button"
                 tabIndex={0}
                 className={`space-pill space-pill--space${activeSpaceId === space.id ? ' active' : ''}${dragOverSpaceId === space.id ? ' drag-over' : ''}`}
-                style={{ background: space.color, color: isLightColor(space.color) ? '#1a1a1a' : undefined }}
                 onClick={() => handleSpaceSelect(space.id)}
                 onKeyDown={(event) => {
                   if (event.key === 'Enter' || event.key === ' ') {
@@ -1587,7 +1559,7 @@ export default function App() {
             
             <div style={{ flex: 1, overflowY: 'auto' }}>
               {savedItems.length === 0 ? (
-                <div style={{ textAlign: 'center', color: '#888', padding: '32px 0' }}>Reading list is empty</div>
+                <div style={{ textAlign: 'center', color: '#9aa0a6', padding: '32px 0', fontSize: '13px' }}>Reading list is empty</div>
               ) : (
                 savedItems.map(item => (
                   <div key={item.id} style={{ display: 'flex', alignItems: 'center', padding: '8px', gap: '8px', borderRadius: '8px', cursor: 'pointer', backgroundColor: 'rgba(255,255,255,0.02)', marginBottom: '4px' }}
@@ -1602,16 +1574,16 @@ export default function App() {
                     {item.favIconUrl ? (
                       <img src={item.favIconUrl} alt="" style={{ width: 16, height: 16, flexShrink: 0 }} />
                     ) : (
-                      <div style={{ width: 16, height: 16, backgroundColor: '#333', borderRadius: '50%', flexShrink: 0 }} />
+                      <div style={{ width: 16, height: 16, backgroundColor: '#5f6368', borderRadius: '50%', flexShrink: 0 }} />
                     )}
                     <div style={{ flex: 1, minWidth: 0 }}>
                       <div style={{ fontSize: '12px', color: '#e5e5e5', whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis' }}>{item.title}</div>
-                      <div style={{ fontSize: '10px', color: '#888', whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis' }}>
+                      <div style={{ fontSize: '10px', color: '#9aa0a6', whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis' }}>
                         {(() => { try { return new URL(item.url).hostname; } catch(e) { return item.url; } })()}
                       </div>
                     </div>
                     <button type="button" onClick={(e) => { e.stopPropagation(); sendMessage({ type: 'REMOVE_SAVED_ITEM', url: item.url }); }}
-                      style={{ background: 'none', border: 'none', color: '#888', cursor: 'pointer', padding: '4px' }}>✕</button>
+                      style={{ background: 'none', border: 'none', color: '#9aa0a6', cursor: 'pointer', padding: '4px' }}>✕</button>
                   </div>
                 ))
               )}

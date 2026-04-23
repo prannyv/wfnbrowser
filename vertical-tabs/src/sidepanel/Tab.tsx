@@ -133,8 +133,7 @@ const Tab = memo(function Tab({ tab, isActive, matches, searchHighlightQuery, va
   const classNames = ['tab-item', variantClass, isVeryStale ? 'tab-item--dusty' : '']
     .filter(Boolean)
     .join(' ');
-  const isPinned = !!tab.pinned;
-  const iconSize = isPinned ? '20px' : '32px';
+  const iconSize = '16px';
 
   const handleMouseDown = (e: React.MouseEvent) => {
     if (e.button === 1) {

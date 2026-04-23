@@ -1,22 +1,6 @@
 import { useState, useEffect, useCallback, useRef } from 'react';
 
 type ResultType = 'tab' | 'bookmark' | 'history';
-type TopSitesMode = 'frequent' | 'recent' | 'manual';
-
-interface TopSiteItem {
-  url: string;
-  title: string;
-}
-
-interface TopSitesConfig {
-  mode: TopSitesMode;
-}
-
-const TOP_SITES_STORAGE_KEY = 'newtab-topsites-config';
-const REMOVED_URLS_STORAGE_KEY = 'newtab-topsites-removed';
-const REMOVED_DOMAINS_STORAGE_KEY = 'newtab-topsites-removed-domains';
-const MANUAL_SITES_STORAGE_KEY = 'newtab-topsites-manual';
-const TOP_SITES_COUNT = 4;
 
 interface SearchResult {
   id: string;
@@ -55,27 +39,6 @@ function isUrl(query: string): boolean {
     /^[a-z0-9]+([\-.]{1}[a-z0-9]+)*\.[a-z]{2,}(\/.*)?$/i.test(query);
 }
 
-/** Extract base domain from URL for grouping (e.g. www.reddit.com -> reddit.com) */
-function getBaseDomain(url: string): string {
-  try {
-    const hostname = new URL(url).hostname;
-    return hostname.replace(/^www\./, '');
-  } catch {
-    return url;
-  }
-}
-
-/** Build base site URL (e.g. https://reddit.com) from any page URL */
-function getBaseUrl(url: string): string {
-  try {
-    const u = new URL(url);
-    const host = u.hostname.replace(/^www\./, '');
-    return `${u.protocol}//${host}${u.port && u.port !== '80' && u.port !== '443' ? ':' + u.port : ''}`;
-  } catch {
-    return url;
-  }
-}
-
 export default function App() {
   const [query, setQuery] = useState('');
   const [results, setResults] = useState<SearchResult[]>([]);
@@ -85,13 +48,6 @@ export default function App() {
   const [pinnedTabs, setPinnedTabs] = useState<PinnedTab[]>([]);
   const [bottomBookmarks, setBottomBookmarks] = useState<BookmarkItem[]>([]);
   const [bottomDownloads, setBottomDownloads] = useState<DownloadItem[]>([]);
-  const [topSites, setTopSites] = useState<TopSiteItem[]>([]);
-  const [topSitesConfig, setTopSitesConfig] = useState<TopSitesConfig>({ mode: 'frequent' });
-  const [removedUrls, setRemovedUrls] = useState<Set<string>>(new Set());
-  const [removedDomains, setRemovedDomains] = useState<Set<string>>(new Set());
-  const [manualSites, setManualSites] = useState<TopSiteItem[]>([]);
-  const [addSiteUrl, setAddSiteUrl] = useState('');
-  const [addSiteOpen, setAddSiteOpen] = useState(false);
   const inputRef = useRef<HTMLInputElement>(null);
   const debounceRef = useRef<ReturnType<typeof setTimeout> | null>(null);
   const queryRef = useRef(query);
@@ -113,7 +69,6 @@ export default function App() {
   const loadDefaultResults = useCallback(async () => {
     setIsSearching(true);
     try {
-      // Don't show recent tabs in search results - just load highlights
       setResults([]);
       setSelectedIndex(0);
       loadHighlightedSections();
@@ -124,7 +79,6 @@ export default function App() {
       setIsSearching(false);
     }
   }, [loadHighlightedSections]);
-
 
   const loadBottomSections = useCallback(async () => {
     try {
@@ -171,137 +125,6 @@ export default function App() {
   useEffect(() => {
     loadBottomSections();
   }, [loadBottomSections]);
-
-  // Load top sites config from storage
-  useEffect(() => {
-    chrome.storage.local.get([TOP_SITES_STORAGE_KEY, REMOVED_URLS_STORAGE_KEY, REMOVED_DOMAINS_STORAGE_KEY, MANUAL_SITES_STORAGE_KEY]).then((result: Record<string, unknown>) => {
-      const cfg = result[TOP_SITES_STORAGE_KEY] as TopSitesConfig | undefined;
-      if (cfg && typeof cfg === 'object' && 'mode' in cfg) {
-        setTopSitesConfig({ mode: cfg.mode });
-      }
-      const removed = result[REMOVED_URLS_STORAGE_KEY] as string[] | undefined;
-      if (Array.isArray(removed)) {
-        setRemovedUrls(new Set(removed));
-      }
-      const removedD = result[REMOVED_DOMAINS_STORAGE_KEY] as string[] | undefined;
-      if (Array.isArray(removedD)) {
-        setRemovedDomains(new Set(removedD));
-      }
-      const manual = result[MANUAL_SITES_STORAGE_KEY] as TopSiteItem[] | undefined;
-      if (Array.isArray(manual)) {
-        setManualSites(manual);
-      }
-    });
-  }, []);
-
-  const loadTopSites = useCallback(async () => {
-    const config = topSitesConfig;
-    const removed = removedUrls;
-    const removedD = removedDomains;
-    const limit = TOP_SITES_COUNT;
-
-    try {
-      if (config.mode === 'manual') {
-        setTopSites(manualSites.slice(0, limit));
-        return;
-      }
-
-      if (config.mode === 'frequent') {
-        const items = await chrome.topSites.get();
-        const byDomain = new Map<string, { url: string; title: string }>();
-        for (const i of items) {
-          if (!i.url || i.url.startsWith('chrome://') || i.url.startsWith('chrome-extension://') || removed.has(i.url)) continue;
-          const domain = getBaseDomain(i.url);
-          if (removedD.has(domain)) continue;
-          if (!byDomain.has(domain)) {
-            byDomain.set(domain, {
-              url: getBaseUrl(i.url),
-              title: domain,
-            });
-          }
-          if (byDomain.size >= limit) break;
-        }
-        setTopSites(Array.from(byDomain.values()).slice(0, limit));
-        return;
-      }
-
-      if (config.mode === 'recent') {
-        const historyItems = await chrome.history.search({
-          text: '',
-          maxResults: 100,
-          startTime: 0,
-        });
-        const byDomain = new Map<string, { url: string; title: string }>();
-        for (const h of historyItems) {
-          if (!h.url || h.url.startsWith('chrome://') || h.url.startsWith('chrome-extension://') || removed.has(h.url)) continue;
-          const domain = getBaseDomain(h.url);
-          if (removedD.has(domain)) continue;
-          if (!byDomain.has(domain)) {
-            byDomain.set(domain, {
-              url: getBaseUrl(h.url),
-              title: domain,
-            });
-          }
-          if (byDomain.size >= limit) break;
-        }
-        setTopSites(Array.from(byDomain.values()).slice(0, limit));
-      }
-    } catch (e) {
-      console.error('[NewTab] Load top sites error:', e);
-      setTopSites([]);
-    }
-  }, [topSitesConfig, removedUrls, removedDomains, manualSites]);
-
-  useEffect(() => {
-    loadTopSites();
-  }, [loadTopSites]);
-
-  const removeFromTopSites = useCallback(
-    (url: string) => {
-      if (topSitesConfig.mode === 'manual') {
-        const next = manualSites.filter((s) => s.url !== url);
-        setManualSites(next);
-        chrome.storage.local.set({ [MANUAL_SITES_STORAGE_KEY]: next });
-      } else {
-        const domain = getBaseDomain(url);
-        const next = new Set(removedDomains);
-        next.add(domain);
-        setRemovedDomains(next);
-        chrome.storage.local.set({ [REMOVED_DOMAINS_STORAGE_KEY]: Array.from(next) });
-      }
-    },
-    [topSitesConfig.mode, manualSites, removedDomains]
-  );
-
-  const updateTopSitesConfig = useCallback((updates: Partial<TopSitesConfig>) => {
-    setTopSitesConfig((prev) => {
-      const next = { ...prev, ...updates };
-      chrome.storage.local.set({ [TOP_SITES_STORAGE_KEY]: next });
-      return next;
-    });
-  }, []);
-
-  const addManualSite = useCallback(
-    (url: string, title?: string) => {
-      try {
-        const parsed = new URL(url.startsWith('http') ? url : `https://${url}`);
-        const norm = parsed.href;
-        if (manualSites.some((s) => s.url === norm)) return;
-        const item: TopSiteItem = {
-          url: norm,
-          title: title || parsed.hostname || norm,
-        };
-        const next = [...manualSites, item];
-        setManualSites(next);
-        chrome.storage.local.set({ [MANUAL_SITES_STORAGE_KEY]: next });
-        setAddSiteUrl('');
-        setAddSiteOpen(false);
-      } catch {
-        /* invalid url */
-      }
-    },
-    [manualSites]
-  );
 
   const search = useCallback(async (q: string) => {
     const trimmed = q.trim().toLowerCase();
@@ -532,119 +355,32 @@ export default function App() {
         )}
       </form>
 
-      {!query.trim() && (topSites.length > 0 || topSitesConfig.mode === 'manual') && (
-        <div className="newtab-topsites">
-          <div className="newtab-topsites-header">
-            <select
-              value={topSitesConfig.mode}
-              onChange={(e) => updateTopSitesConfig({ mode: e.target.value as TopSitesMode })}
-              className="newtab-topsites-mode-select"
-              aria-label="Top sites mode"
-            >
-              <option value="frequent">Frequent</option>
-              <option value="recent">Recent</option>
-              <option value="manual">Shortcuts</option>
-            </select>
-            {topSitesConfig.mode === 'manual' && (
-              <button
-                type="button"
-                className="newtab-topsites-add-btn"
-                onClick={() => setAddSiteOpen(true)}
-                title="Add site"
-                aria-label="Add site"
-              >
-                +
-              </button>
-            )}
-          </div>
-          <div className="newtab-topsites-grid">
-            {topSites.length === 0 && topSitesConfig.mode === 'manual' && (
-              <p className="newtab-topsites-empty">Add shortcuts with the + button</p>
-            )}
-            {topSites.map((site) => (
-              <div key={site.url} className="newtab-topsites-item-wrap">
-                <a
-                  href={site.url}
-                  className="newtab-topsites-item"
-                  title={site.title}
-                >
-                  <span className="newtab-topsites-item-label">{site.title}</span>
-                </a>
-                <button
-                  type="button"
-                  className="newtab-topsites-item-remove"
-                  onClick={(e) => {
-                    e.preventDefault();
-                    e.stopPropagation();
-                    removeFromTopSites(site.url);
-                  }}
-                  title="Remove"
-                  aria-label={`Remove ${site.title}`}
-                >
-                  ×
-                </button>
-              </div>
-            ))}
-          </div>
-        </div>
-      )}
-
-      {addSiteOpen && (
-        <div className="newtab-addsite-backdrop" onClick={() => setAddSiteOpen(false)}>
-          <div className="newtab-addsite-modal" onClick={(e) => e.stopPropagation()}>
-            <h3 className="newtab-addsite-title">Add shortcut</h3>
-            <input
-              type="url"
-              className="newtab-addsite-input"
-              placeholder="https://example.com"
-              value={addSiteUrl}
-              onChange={(e) => setAddSiteUrl(e.target.value)}
-              onKeyDown={(e) => {
-                if (e.key === 'Enter') addManualSite(addSiteUrl);
-                if (e.key === 'Escape') setAddSiteOpen(false);
-              }}
-              autoFocus
-            />
-            <div className="newtab-addsite-actions">
-              <button type="button" className="newtab-addsite-cancel" onClick={() => setAddSiteOpen(false)}>
-                Cancel
-              </button>
-              <button type="button" className="newtab-addsite-add" onClick={() => addManualSite(addSiteUrl)}>
-                Add
-              </button>
-            </div>
-          </div>
-        </div>
-      )}
-
       {isFocused && !query.trim() && pinnedTabs.length > 0 && (
         <div className="newtab-highlights">
-          {pinnedTabs.length > 0 && (
-            <div className="newtab-highlight-card">
-              <div className="newtab-highlight-title">Pinned Tabs</div>
-              <div className="newtab-highlight-grid">
-                {pinnedTabs.map(t => (
-                  <button
-                    key={t.id}
-                    type="button"
-                    className="newtab-highlight-item"
-                    onClick={() => {
-                      chrome.tabs.update(t.id, { active: true });
-                      chrome.tabs.get(t.id).then(tab => chrome.windows.update(tab.windowId!, { focused: true })).catch(() => {});
-                    }}
-                    title={t.title}
-                  >
-                    {t.favIconUrl ? (
-                      <img src={t.favIconUrl} alt="" className="newtab-highlight-favicon" />
-                    ) : (
-                      <span className="newtab-highlight-icon">◉</span>
-                    )}
-                    <span className="newtab-highlight-label">{t.title}</span>
-                  </button>
-                ))}
-              </div>
+          <div className="newtab-highlight-card">
+            <div className="newtab-highlight-title">Pinned Tabs</div>
+            <div className="newtab-highlight-grid">
+              {pinnedTabs.map(t => (
+                <button
+                  key={t.id}
+                  type="button"
+                  className="newtab-highlight-item"
+                  onClick={() => {
+                    chrome.tabs.update(t.id, { active: true });
+                    chrome.tabs.get(t.id).then(tab => chrome.windows.update(tab.windowId!, { focused: true })).catch(() => {});
+                  }}
+                  title={t.title}
+                >
+                  {t.favIconUrl ? (
+                    <img src={t.favIconUrl} alt="" className="newtab-highlight-favicon" />
+                  ) : (
+                    <span className="newtab-highlight-icon">◉</span>
+                  )}
+                  <span className="newtab-highlight-label">{t.title}</span>
+                </button>
+              ))}
             </div>
-          )}
+          </div>
         </div>
       )}
 
@@ -691,7 +427,6 @@ export default function App() {
         </div>
       )}
 
-      <p className="newtab-footer">⌘K to focus · ⌘ Enter · Esc</p>
     </div>
   );
 }

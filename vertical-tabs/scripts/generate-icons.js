@@ -3,7 +3,7 @@ import { writeFileSync } from 'fs';
 import { join } from 'path';
 
 const sizes = [16, 32, 48, 128];
-const iconColor = '#4a9eff'; // Accent color
+const iconColor = '#000000';
 
 async function generateIcon(size) {
   // Create a simple colored square with rounded corners
