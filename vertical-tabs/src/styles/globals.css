@@ -974,6 +974,7 @@ body {
   width: 100%;
   max-width: 520px;
   position: relative;
+  z-index: 9999;
 }
 
 .newtab-input-wrap {
@@ -1009,15 +1010,15 @@ body {
   top: calc(100% + 6px);
   left: 0;
   right: 0;
-  padding: 6px 0;
-  background: rgba(24, 24, 27, 0.95);
+  z-index: 9999;
+  padding: 4px 0;
+  background: #2a2b2e;
   border-radius: 12px;
-  border: 1px solid rgba(255, 255, 255, 0.04);
+  border: 1px solid rgba(255, 255, 255, 0.08);
   list-style: none;
   max-height: 320px;
   overflow-y: auto;
-  box-shadow: 0 12px 40px -12px rgba(0, 0, 0, 0.5);
-  backdrop-filter: blur(16px);
+  box-shadow: 0 8px 32px rgba(0, 0, 0, 0.6);
 }
 
 .newtab-result {
@@ -1027,13 +1028,14 @@ body {
   padding: 10px 16px;
   cursor: pointer;
   border-radius: 8px;
-  margin: 0 6px;
-  transition: background 0.12s ease;
+  margin: 0 4px;
+  background: transparent;
+  transition: background 0.1s ease;
 }
 
 .newtab-result:hover,
 .newtab-result--selected {
-  background: rgba(255, 255, 255, 0.05);
+  background: #3c4043;
 }
 
 .newtab-result-icon {
@@ -1049,19 +1051,19 @@ body {
   height: 18px;
   flex-shrink: 0;
   font-size: 11px;
-  opacity: 0.6;
+  opacity: 0.7;
 }
 
 .newtab-result-content {
   display: flex;
   flex-direction: column;
   min-width: 0;
-  gap: 1px;
+  gap: 2px;
 }
 
 .newtab-result-title {
   font-size: 13px;
-  color: #f4f4f5;
+  color: #e8eaed;
   white-space: nowrap;
   overflow: hidden;
   text-overflow: ellipsis;
@@ -1069,7 +1071,7 @@ body {
 
 .newtab-result-url {
   font-size: 11px;
-  color: #71717a;
+  color: #9aa0a6;
   white-space: nowrap;
   overflow: hidden;
   text-overflow: ellipsis;
